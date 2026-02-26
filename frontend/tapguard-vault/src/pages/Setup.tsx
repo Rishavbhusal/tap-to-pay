@@ -13,6 +13,7 @@ import { initVault } from "@/lib/program";
 import { useProgram } from "@/hooks/useProgram";
 import { useSolana } from "@/hooks/useSolana";
 import { toast } from "sonner";
+import { useHaloChip } from "../hooks/useHaloChip";
 
 const steps = ["Scan NFC", "Set Limit", "Confirm"];
 
@@ -27,40 +28,20 @@ export default function Setup() {
   const program = useProgram();
   const { refreshVault } = useSolana();
 
+  const { getChipPublicKey, isLoading: haloLoading, error: haloError } = useHaloChip();
+
   const handleNfcScan = async () => {
+    toast.info("Hold your HaLo NFC chip near your phone...");
     try {
-      if ("NDEFReader" in window) {
-        toast.info("Hold your NFC chip near your phone...");
-        const ndef = new (window as any).NDEFReader();
-        await ndef.scan();
-        ndef.onreading = (event: any) => {
-          const { message } = event;
-          for (const record of message.records) {
-            if (record.recordType === "text" || record.recordType === "url") {
-              let text = "";
-              if (record.recordType === "text") {
-                const textDecoder = new TextDecoder(record.encoding || "utf-8");
-                text = textDecoder.decode(record.data);
-              } else if (record.recordType === "url") {
-                const textDecoder = new TextDecoder("utf-8");
-                text = textDecoder.decode(record.data);
-              }
-              // Try to extract 128 hex chars (chip pubkey)
-              const match = text.match(/[0-9a-fA-F]{128}/);
-              if (match) {
-                setChipPubkey(match[0]);
-                toast.success("NFC chip public key detected!");
-                return;
-              }
-            }
-          }
-          toast.error("No valid chip public key found on NFC tag.");
-        };
+      const result = await getChipPublicKey();
+      if (result && result.address) {
+        setChipPubkey(result.address.replace(/^0x/, ""));
+        toast.success("Chip public key detected!");
       } else {
-        toast.error("NFC not supported on this device");
+        toast.error("Failed to read chip public key");
       }
-    } catch (err: any) {
-      toast.error("NFC scan failed: " + (err?.message || err));
+    } catch (e: any) {
+      toast.error("NFC scan failed: " + (e?.message || e));
     }
   };
 
