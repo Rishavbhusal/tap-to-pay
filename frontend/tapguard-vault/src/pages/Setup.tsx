@@ -31,10 +31,36 @@ export default function Setup() {
     try {
       if ("NDEFReader" in window) {
         toast.info("Hold your NFC chip near your phone...");
-        // Real NFC would go here
+        const ndef = new (window as any).NDEFReader();
+        await ndef.scan();
+        ndef.onreading = (event: any) => {
+          const { message } = event;
+          for (const record of message.records) {
+            if (record.recordType === "text" || record.recordType === "url") {
+              let text = "";
+              if (record.recordType === "text") {
+                const textDecoder = new TextDecoder(record.encoding || "utf-8");
+                text = textDecoder.decode(record.data);
+              } else if (record.recordType === "url") {
+                const textDecoder = new TextDecoder("utf-8");
+                text = textDecoder.decode(record.data);
+              }
+              // Try to extract 128 hex chars (chip pubkey)
+              const match = text.match(/[0-9a-fA-F]{128}/);
+              if (match) {
+                setChipPubkey(match[0]);
+                toast.success("NFC chip public key detected!");
+                return;
+              }
+            }
+          }
+          toast.error("No valid chip public key found on NFC tag.");
+        };
+      } else {
+        toast.error("NFC not supported on this device");
       }
-    } catch {
-      toast.error("NFC not supported on this device");
+    } catch (err: any) {
+      toast.error("NFC scan failed: " + (err?.message || err));
     }
   };
 

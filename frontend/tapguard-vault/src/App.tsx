@@ -15,7 +15,7 @@ import Setup from "./pages/Setup";
 import TapPage from "./pages/Tap";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
-import Register from "./pages/Register";
+// Register page removed
 
 import "@solana/wallet-adapter-react-ui/styles.css";
 
@@ -42,7 +42,7 @@ const App = () => {
                     <Route path="/" element={<Index />} />
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/setup" element={<Setup />} />
-                    <Route path="/register" element={<Register />} />
+                    {/* Register route removed */}
                     <Route path="/tap" element={<TapPage />} />
                     <Route path="/settings" element={<Settings />} />
                     <Route path="*" element={<NotFound />} />
