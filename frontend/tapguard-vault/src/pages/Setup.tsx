@@ -20,7 +20,8 @@ const steps = ["Scan NFC", "Set Limit", "Confirm"];
 export default function Setup() {
   const [step, setStep] = useState(0);
   const [chipPubkey, setChipPubkey] = useState("");
-  const [dailyLimit, setDailyLimit] = useState(5);
+  const [chipScanned, setChipScanned] = useState(false);
+  // Daily limit removed for minimal flow
   const [creating, setCreating] = useState(false);
   const [success, setSuccess] = useState(false);
   const { connected, publicKey } = useWallet();
@@ -31,16 +32,21 @@ export default function Setup() {
   const { getChipPublicKey, isLoading: haloLoading, error: haloError } = useHaloChip();
 
   const handleNfcScan = async () => {
-    toast.info("Hold your HaLo NFC chip near your phone...");
+    toast.info("Hold your  NFC chip near your phone...");
     try {
       const result = await getChipPublicKey();
       if (result && result.address) {
         setChipPubkey(result.address.replace(/^0x/, ""));
+        setChipScanned(true);
         toast.success("Chip public key detected!");
       } else {
+        setChipPubkey("");
+        setChipScanned(false);
         toast.error("Failed to read chip public key");
       }
     } catch (e: any) {
+      setChipPubkey("");
+      setChipScanned(false);
       toast.error("NFC scan failed: " + (e?.message || e));
     }
   };
@@ -63,7 +69,8 @@ export default function Setup() {
 
     setCreating(true);
     try {
-      const dailyLimitLamports = new BN(solToLamports(dailyLimit));
+      // Set daily limit to max value (no limit) for now
+      const dailyLimitLamports = new BN("18446744073709551615");
       const { tx, registryPDA } = await initVault(program, publicKey, chipBytes, dailyLimitLamports);
       console.log("Vault created! Tx:", tx, "PDA:", registryPDA.toBase58());
       setSuccess(true);
@@ -146,30 +153,31 @@ export default function Setup() {
             </button>
             <h2 className="text-2xl font-bold mb-2">Scan NFC Chip</h2>
             <p className="text-muted-foreground text-sm mb-6">
-              Hold your NFC wristband or card near your device to read its public key.
+              Hold your NFC  card near your device to read its public key.
             </p>
 
+
             <div className="text-left mb-6">
-              <label className="text-xs text-muted-foreground mb-1.5 block">
-                Or paste chip public key manually (hex, 128 chars)
+              <label className="text-xs text-muted-foreground mb-1.5 block flex items-center gap-2">
+                Chip public key (auto-filled after scan)
+                {chipScanned && chipPubkey && (
+                  <span className="inline-flex items-center text-green-600 font-bold text-xs">
+                    <Check className="w-4 h-4 mr-1" /> Scanned
+                  </span>
+                )}
               </label>
               <Input
-                placeholder="0x..."
+                placeholder="Scan chip to autofill"
                 value={chipPubkey}
-                onChange={(e) => setChipPubkey(e.target.value)}
+                readOnly
                 className="font-mono text-xs bg-muted border-border"
               />
             </div>
 
             <Button
-              onClick={() => {
-                if (!chipPubkey) {
-                  setChipPubkey("a1b2c3d4e5f6".repeat(10) + "abcd1234");
-                  toast.info("Using demo chip key");
-                }
-                setStep(1);
-              }}
+              onClick={() => setStep(1)}
               className="w-full btn-glow bg-primary text-primary-foreground rounded-xl"
+              disabled={!chipScanned || !chipPubkey}
             >
               Continue
               <ArrowRight className="ml-2 w-4 h-4" />
@@ -177,51 +185,7 @@ export default function Setup() {
           </motion.div>
         )}
 
-        {/* Step 2: Set Limit */}
-        {step === 1 && (
-          <motion.div
-            key="step-1"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="glass-card p-8"
-          >
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                <Sliders className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold">Daily Spending Limit</h2>
-                <p className="text-muted-foreground text-xs">Max SOL that can be spent per day via NFC taps</p>
-              </div>
-            </div>
-
-            <div className="text-center mb-8">
-              <div className="text-5xl font-bold gradient-text mb-1">{dailyLimit.toFixed(1)} SOL</div>
-              <div className="text-muted-foreground text-sm">≈ ${solToUsd(dailyLimit)}</div>
-            </div>
-
-            <Slider
-              value={[dailyLimit]}
-              onValueChange={([v]) => setDailyLimit(v)}
-              min={0.1}
-              max={100}
-              step={0.1}
-              className="mb-8"
-            />
-
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={() => setStep(0)} className="flex-1 rounded-xl border-border">
-                <ArrowLeft className="mr-2 w-4 h-4" />
-                Back
-              </Button>
-              <Button onClick={() => setStep(2)} className="flex-1 btn-glow bg-primary text-primary-foreground rounded-xl">
-                Continue
-                <ArrowRight className="ml-2 w-4 h-4" />
-              </Button>
-            </div>
-          </motion.div>
-        )}
+        {/* Step 2 removed: No daily limit UI */}
 
         {/* Step 3: Confirm */}
         {step === 2 && !success && (
