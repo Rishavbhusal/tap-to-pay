@@ -8,7 +8,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use sha3::{Keccak256, Digest};
 use libsecp256k1::{recover, Message, RecoveryId, Signature};
 
-declare_id!("BpvLHSZELbZk8jLHohBojnTVkEJqftA5EjeuTvXik1rJ");
+declare_id!("9ZUVpnGDNJUdzUwK7LfvhCbFcXaf3c63dHkvrcscWq3R");
 
 #[program]
 pub mod nfc_smart_vault {

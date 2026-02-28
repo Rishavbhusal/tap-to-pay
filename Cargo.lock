@@ -1022,7 +1022,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nfc_superteam"
+name = "nfc_superteam2"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
