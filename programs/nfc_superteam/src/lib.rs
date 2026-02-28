@@ -116,9 +116,10 @@ pub mod nfc_smart_vault {
 fn execute_spl_transfer(ctx: Context<ExecuteTap>, amount: u64) -> Result<()> {
     let registry = &ctx.accounts.registry;
     let seeds = &[
-        b"vault",
+        b"vault" as &[u8],
         registry.owner_sol.as_ref(),
-        registry.chip_pubkey.as_ref(),
+        &registry.chip_pubkey[..32],
+        &registry.chip_pubkey[32..],
         &[registry.bump],
     ];
     let signer = &[&seeds[..]];
@@ -137,9 +138,10 @@ fn execute_spl_transfer(ctx: Context<ExecuteTap>, amount: u64) -> Result<()> {
 fn execute_sol_transfer(ctx: Context<ExecuteTap>, amount: u64) -> Result<()> {
     let registry = &ctx.accounts.registry;
     let seeds = &[
-        b"vault",
+        b"vault" as &[u8],
         registry.owner_sol.as_ref(),
-        registry.chip_pubkey.as_ref(),
+        &registry.chip_pubkey[..32],
+        &registry.chip_pubkey[32..],
         &[registry.bump],
     ];
     let signer = &[&seeds[..]];
@@ -167,7 +169,7 @@ pub struct InitVault<'info> {
     #[account(
         init,
         payer = owner,
-        seeds = [b"vault", owner.key().as_ref(), chip_pubkey.as_ref()],
+        seeds = [b"vault", owner.key().as_ref(), &chip_pubkey[..32], &chip_pubkey[32..]],
         bump,
         space = 8 + 200
     )]

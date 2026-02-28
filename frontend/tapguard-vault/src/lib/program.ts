@@ -30,8 +30,14 @@ export function getVaultPDA(
   owner: PublicKey,
   chipPubkey: number[] | Uint8Array
 ): [PublicKey, number] {
+  const chipBuf = Buffer.from(chipPubkey);
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("vault"), owner.toBuffer(), Buffer.from(chipPubkey)],
+    [
+      Buffer.from("vault"),
+      owner.toBuffer(),
+      chipBuf.subarray(0, 32),
+      chipBuf.subarray(32, 64),
+    ],
     PROGRAM_ID
   );
 }
