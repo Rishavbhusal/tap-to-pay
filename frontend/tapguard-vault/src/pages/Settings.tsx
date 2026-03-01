@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useNavigate } from "react-router-dom";
 import { BN } from "@coral-xyz/anchor";
-import { Shield, Sliders, AlertTriangle, Check, Loader2 } from "lucide-react";
+import { Shield, ShieldOff, Sliders, AlertTriangle, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
@@ -19,7 +19,7 @@ import {
 import { useSolana } from "@/hooks/useSolana";
 import { useProgram } from "@/hooks/useProgram";
 import { lamportsToSol, solToUsd, truncateAddress, solToLamports } from "@/lib/constants";
-import { setLimit as setLimitIx, emergencyFreeze as emergencyFreezeIx } from "@/lib/program";
+import { setLimit as setLimitIx, emergencyFreeze as emergencyFreezeIx, unfreezeVault as unfreezeIx } from "@/lib/program";
 import { toast } from "sonner";
 
 export default function Settings() {
@@ -27,9 +27,20 @@ export default function Settings() {
   const { vault, vaultPDA, refreshVault } = useSolana();
   const program = useProgram();
   const navigate = useNavigate();
-  const [newLimit, setNewLimit] = useState(vault ? lamportsToSol(vault.dailyLimit.toNumber()) : 5);
+  const MAX_U64 = useMemo(() => new BN("18446744073709551615"), []);
+  const currentLimitSol = useMemo(() => {
+    if (!vault) return 5;
+    try {
+      if (vault.dailyLimit.gte(MAX_U64)) return 100;
+      return lamportsToSol(vault.dailyLimit.toNumber());
+    } catch {
+      return 100;
+    }
+  }, [vault, MAX_U64]);
+  const [newLimit, setNewLimit] = useState(currentLimitSol);
   const [updating, setUpdating] = useState(false);
   const [freezing, setFreezing] = useState(false);
+  const [unfreezing, setUnfreezing] = useState(false);
 
   if (!connected) {
     navigate("/dashboard");
@@ -94,7 +105,7 @@ export default function Settings() {
           <div>
             <h2 className="font-semibold">Daily Spending Limit</h2>
             <p className="text-xs text-muted-foreground">
-              Current: {lamportsToSol(vault.dailyLimit.toNumber()).toFixed(1)} SOL
+              Current: {vault.dailyLimit.gte(MAX_U64) ? "Unlimited" : `${lamportsToSol(vault.dailyLimit.toNumber()).toFixed(1)} SOL`}
             </p>
           </div>
         </div>
@@ -140,8 +151,8 @@ export default function Settings() {
             ["Nonce", vault.nonce.toString()],
             ["Chip Key", truncateAddress(vault.chipPubkey.map(b => b.toString(16).padStart(2, "0")).join(""), 12)],
             ["Owner", truncateAddress(vault.ownerSol.toBase58(), 8)],
-            ["Daily Spend", `${lamportsToSol(vault.dailySpend.toNumber()).toFixed(4)} SOL`],
-            ["Daily Limit", `${lamportsToSol(vault.dailyLimit.toNumber()).toFixed(4)} SOL`],
+            ["Daily Spend", (() => { try { return `${lamportsToSol(vault.dailySpend.toNumber()).toFixed(4)} SOL`; } catch { return "0 SOL"; } })()],
+            ["Daily Limit", vault.dailyLimit.gte(MAX_U64) ? "Unlimited" : `${lamportsToSol(vault.dailyLimit.toNumber()).toFixed(4)} SOL`],
             ["Bump", vault.bump.toString()],
           ].map(([label, value]) => (
             <div key={label} className="flex justify-between py-2 border-b border-border/30 last:border-0">
@@ -164,38 +175,68 @@ export default function Settings() {
           <h2 className="font-semibold text-destructive">Danger Zone</h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Freezing your vault will immediately disable all NFC tap payments until you manually unfreeze.
+          {vault.frozen
+            ? "Your vault is currently frozen. Unfreeze it to resume tap payments."
+            : "Freezing your vault will immediately disable all NFC tap payments until you manually unfreeze."}
         </p>
 
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="destructive" className="w-full rounded-xl">
-              <Shield className="mr-2 w-4 h-4" />
-              Emergency Freeze Vault
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="glass-card border-destructive/20">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-destructive" />
-                Freeze Vault?
-              </DialogTitle>
-              <DialogDescription>
-                This will immediately freeze ALL tap payments. You can unfreeze later from this page.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="gap-2">
-              <Button variant="outline" className="rounded-xl border-border">Cancel</Button>
-              <Button variant="destructive" onClick={handleFreeze} disabled={freezing} className="rounded-xl">
-                {freezing ? (
-                  <><Loader2 className="mr-2 w-4 h-4 animate-spin" />Freezing...</>
-                ) : (
-                  "Yes, Freeze Now"
-                )}
+        {vault.frozen ? (
+          <Button
+            onClick={async () => {
+              if (!program || !publicKey || !vaultPDA) return;
+              setUnfreezing(true);
+              try {
+                const tx = await unfreezeIx(program, vaultPDA, publicKey);
+                console.log("Vault unfrozen, tx:", tx);
+                toast.success("Vault has been unfrozen. Tap payments are enabled again.");
+                await refreshVault();
+              } catch (err: any) {
+                console.error("Failed to unfreeze:", err);
+                toast.error(err?.message || "Failed to unfreeze vault");
+              } finally {
+                setUnfreezing(false);
+              }
+            }}
+            disabled={unfreezing}
+            className="w-full rounded-xl bg-success text-success-foreground hover:bg-success/90"
+          >
+            {unfreezing ? (
+              <><Loader2 className="mr-2 w-4 h-4 animate-spin" />Unfreezing...</>
+            ) : (
+              <><ShieldOff className="mr-2 w-4 h-4" />Unfreeze Vault</>
+            )}
+          </Button>
+        ) : (
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="destructive" className="w-full rounded-xl">
+                <Shield className="mr-2 w-4 h-4" />
+                Emergency Freeze Vault
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent className="glass-card border-destructive/20">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-destructive" />
+                  Freeze Vault?
+                </DialogTitle>
+                <DialogDescription>
+                  This will immediately freeze ALL tap payments. You can unfreeze later from this page.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="gap-2">
+                <Button variant="outline" className="rounded-xl border-border">Cancel</Button>
+                <Button variant="destructive" onClick={handleFreeze} disabled={freezing} className="rounded-xl">
+                  {freezing ? (
+                    <><Loader2 className="mr-2 w-4 h-4 animate-spin" />Freezing...</>
+                  ) : (
+                    "Yes, Freeze Now"
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </motion.div>
     </div>
   );

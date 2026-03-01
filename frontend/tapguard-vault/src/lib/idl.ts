@@ -9,6 +9,7 @@ export {
   initVault,
   setLimit,
   emergencyFreeze,
+  unfreezeVault,
   executeTap,
   fetchVault,
   findVaultsByOwner,

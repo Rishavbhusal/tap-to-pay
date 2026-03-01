@@ -9,6 +9,7 @@ const navItems = [
   { path: "/dashboard", label: "Dashboard" },
   { path: "/setup", label: "Setup" },
   { path: "/tap", label: "Tap" },
+  { path: "/fund", label: "Fund" },
   { path: "/settings", label: "Settings" },
 ];
 

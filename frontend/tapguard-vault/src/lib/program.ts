@@ -98,6 +98,23 @@ export async function emergencyFreeze(
   return tx;
 }
 
+// ── Instruction: unfreeze ─────────────────────────────────────────
+export async function unfreezeVault(
+  program: Program<NfcSmartVault>,
+  registryPDA: PublicKey,
+  owner: PublicKey
+) {
+  const tx = await program.methods
+    .unfreeze()
+    .accounts({
+      registry: registryPDA,
+      owner,
+    })
+    .rpc();
+
+  return tx;
+}
+
 // ── Instruction: execute_tap ──────────────────────────────────────
 export async function executeTap(
   program: Program<NfcSmartVault>,

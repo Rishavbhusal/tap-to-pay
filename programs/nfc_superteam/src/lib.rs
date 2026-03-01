@@ -103,6 +103,14 @@ pub mod nfc_smart_vault {
         Ok(())
     }
 
+    // Unfreeze vault
+    pub fn unfreeze(ctx: Context<OwnerOnly>) -> Result<()> {
+        let registry = &mut ctx.accounts.registry;
+        require!(ctx.accounts.owner.key() == registry.owner_sol, VaultError::Unauthorized);
+        registry.frozen = false;
+        Ok(())
+    }
+
     // Set daily limit
     pub fn set_limit(ctx: Context<OwnerOnly>, new_limit: u64) -> Result<()> {
         let registry = &mut ctx.accounts.registry;

@@ -1,7 +1,9 @@
+import { useEffect, useState, useCallback } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
+import { BN } from "@coral-xyz/anchor";
 import {
   Wallet,
   Plus,
@@ -11,11 +13,15 @@ import {
   Copy,
   ChevronDown,
   RefreshCw,
+  ExternalLink,
+  ArrowDown,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSolana } from "@/hooks/useSolana";
-import { truncateAddress, lamportsToSol, solToUsd } from "@/lib/constants";
+import { truncateAddress, lamportsToSol, solToUsd, SOLSCAN_BASE } from "@/lib/constants";
 import { toast } from "sonner";
+import type { ConfirmedSignatureInfo } from "@solana/web3.js";
 import {
   Accordion,
   AccordionContent,
@@ -82,9 +88,44 @@ function SpendingRing({ spent, limit }: { spent: number; limit: number }) {
   );
 }
 
+// Max u64 as BN — used to detect "unlimited" daily limit
+const MAX_U64 = new BN("18446744073709551615");
+
+/** Safely convert a BN to a JS number; returns Infinity for huge values */
+function safeToNumber(bn: BN): number {
+  try {
+    if (bn.gte(MAX_U64)) return Infinity;
+    return bn.toNumber();
+  } catch {
+    return Infinity;
+  }
+}
+
 export default function Dashboard() {
   const { connected, publicKey } = useWallet();
-  const { balance, vault, vaultPDA, network } = useSolana();
+  const { balance, vault, vaultPDA, network, refreshVault, refreshBalance, connection } = useSolana();
+  const [recentTxs, setRecentTxs] = useState<ConfirmedSignatureInfo[]>([]);
+  const [txLoading, setTxLoading] = useState(false);
+
+  const fetchTxHistory = useCallback(async () => {
+    if (!vaultPDA) return;
+    setTxLoading(true);
+    try {
+      const sigs = await connection.getSignaturesForAddress(vaultPDA, { limit: 10 });
+      setRecentTxs(sigs);
+    } catch (err) {
+      console.error("Failed to fetch tx history:", err);
+    } finally {
+      setTxLoading(false);
+    }
+  }, [vaultPDA, connection]);
+
+  // Re-fetch vault & balance every time Dashboard mounts
+  useEffect(() => {
+    refreshVault();
+    refreshBalance();
+    fetchTxHistory();
+  }, [fetchTxHistory]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!connected) return <ConnectOverlay />;
 
@@ -98,6 +139,11 @@ export default function Dashboard() {
   // Calculate hours until midnight UTC
   const now = new Date();
   const resetHours = 24 - now.getUTCHours();
+
+  // Safely extract numeric values for display
+  const dailySpent = vault ? safeToNumber(vault.dailySpend) : 0;
+  const dailyLimit = vault ? safeToNumber(vault.dailyLimit) : Infinity;
+  const isUnlimited = dailyLimit === Infinity;
 
   return (
     <div className="container py-6 max-w-4xl">
@@ -188,10 +234,17 @@ export default function Dashboard() {
               animate={{ opacity: 1, x: 0 }}
             >
               <h3 className="text-sm font-medium text-muted-foreground mb-4">Daily Spending</h3>
-              <SpendingRing spent={vault.dailySpend.toNumber()} limit={vault.dailyLimit.toNumber()} />
+              {isUnlimited ? (
+                <div className="text-center py-6">
+                  <span className="text-3xl font-bold">∞</span>
+                  <p className="text-xs text-muted-foreground mt-1">Unlimited</p>
+                </div>
+              ) : (
+                <SpendingRing spent={dailySpent} limit={dailyLimit} />
+              )}
               <div className="flex justify-between mt-4 text-sm">
                 <span className="text-muted-foreground">
-                  {lamportsToSol(vault.dailySpend.toNumber()).toFixed(2)} / {lamportsToSol(vault.dailyLimit.toNumber()).toFixed(2)} SOL
+                  {lamportsToSol(dailySpent).toFixed(2)} / {isUnlimited ? "∞" : lamportsToSol(dailyLimit).toFixed(2)} SOL
                 </span>
                 <span className="text-muted-foreground flex items-center gap-1">
                   <RefreshCw className="w-3 h-3" />
@@ -203,7 +256,7 @@ export default function Dashboard() {
 
           {/* Quick Actions */}
           <motion.div
-            className="grid grid-cols-3 gap-3"
+            className="grid grid-cols-4 gap-3"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
@@ -218,6 +271,12 @@ export default function Dashboard() {
               <Link to="/tap">
                 <Zap className="w-5 h-5 text-primary" />
                 <span className="text-xs">Tap to Pay</span>
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="glass-card-hover h-auto py-4 flex flex-col gap-2 border-primary/20 hover:border-primary/40">
+              <Link to="/fund">
+                <ArrowDown className="w-5 h-5 text-primary" />
+                <span className="text-xs">Fund</span>
               </Link>
             </Button>
             <Button asChild variant="outline" className="glass-card-hover h-auto py-4 flex flex-col gap-2 border-destructive/20 hover:border-destructive/40">
@@ -235,10 +294,46 @@ export default function Dashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
           >
-            <h3 className="text-sm font-medium text-muted-foreground mb-4">Recent Transactions</h3>
-            <p className="text-muted-foreground text-sm text-center py-8">
-              Transaction history will appear here once you make tap payments.
-            </p>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-muted-foreground">Recent Transactions</h3>
+              <Button variant="ghost" size="sm" onClick={fetchTxHistory} className="h-7 w-7 p-0">
+                {txLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              </Button>
+            </div>
+            {txLoading && recentTxs.length === 0 ? (
+              <div className="text-center py-8">
+                <Loader2 className="w-6 h-6 text-muted-foreground mx-auto animate-spin" />
+              </div>
+            ) : recentTxs.length === 0 ? (
+              <p className="text-muted-foreground text-sm text-center py-8">
+                No transactions yet. Fund your vault or make a tap payment.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {recentTxs.map((tx) => (
+                  <a
+                    key={tx.signature}
+                    href={`${SOLSCAN_BASE}/${tx.signature}?cluster=${network}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition text-sm group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`w-2 h-2 rounded-full ${tx.err ? 'bg-destructive' : 'bg-success'}`} />
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {truncateAddress(tx.signature, 8)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground">
+                        {tx.blockTime ? new Date(tx.blockTime * 1000).toLocaleString() : ""}
+                      </span>
+                      <ExternalLink className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition" />
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
           </motion.div>
 
           {/* Vault Details */}
@@ -257,7 +352,7 @@ export default function Dashboard() {
                     ["Chip Pubkey", truncateAddress(vault.chipPubkey.map(b => b.toString(16).padStart(2, "0")).join(""), 16)],
                     ["Owner", vault.ownerSol.toBase58()],
                     ["Bump", vault.bump.toString()],
-                    ["Last Day", new Date(vault.lastDay.toNumber() * 1000).toLocaleString()],
+                    ["Last Day", new Date(safeToNumber(vault.lastDay) * 86400 * 1000).toLocaleDateString()],
                   ].map(([label, value]) => (
                     <div key={label} className="flex justify-between items-center py-2 border-b border-border/30 last:border-0">
                       <span className="text-muted-foreground">{label}</span>

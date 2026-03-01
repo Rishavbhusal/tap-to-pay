@@ -164,6 +164,21 @@
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "unfreeze",
+      "discriminator": [],
+      "accounts": [
+        {
+          "name": "registry",
+          "writable": true
+        },
+        {
+          "name": "owner",
+          "signer": true
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
