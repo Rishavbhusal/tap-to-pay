@@ -1,5 +1,5 @@
 {
-  "address": "9ZUVpnGDNJUdzUwK7LfvhCbFcXaf3c63dHkvrcscWq3R",
+  "address": "56vaZuVGs7oLE2s2JxYBdfTaBQg9BYeDdhkp9MxC2Q1K",
   "metadata": {
     "name": "nfc_smart_vault",
     "version": "0.1.0",
@@ -167,7 +167,16 @@
     },
     {
       "name": "unfreeze",
-      "discriminator": [],
+      "discriminator": [
+        133,
+        160,
+        68,
+        253,
+        80,
+        232,
+        218,
+        247
+      ],
       "accounts": [
         {
           "name": "registry",

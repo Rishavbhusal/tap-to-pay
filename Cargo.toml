@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "programs/nfc_superteam"
+    "programs/nfc_superteam3"
 ]
 resolver = "2"
 

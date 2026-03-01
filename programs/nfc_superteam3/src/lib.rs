@@ -8,7 +8,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use sha3::{Keccak256, Digest};
 use libsecp256k1::{recover, Message, RecoveryId, Signature};
 
-declare_id!("9ZUVpnGDNJUdzUwK7LfvhCbFcXaf3c63dHkvrcscWq3R");
+declare_id!("56vaZuVGs7oLE2s2JxYBdfTaBQg9BYeDdhkp9MxC2Q1K"); // Will update after deployment if new address is generated
 
 #[program]
 pub mod nfc_smart_vault {
