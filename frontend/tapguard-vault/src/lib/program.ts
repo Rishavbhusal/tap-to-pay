@@ -144,6 +144,7 @@ export async function executeTap(
     message: Buffer.from(payloadBytes),
     signature: Buffer.from(signature),
     recoveryId,
+    instructionIndex: 0xFF, // 0xFF = read from own instruction data (not positional)
   });
 
   return program.methods

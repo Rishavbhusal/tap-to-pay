@@ -155,18 +155,18 @@ fn verify_secp256k1_precompile(
             continue;
         }
 
-        // Parse the Secp256k1SignatureOffsets header
-        // [0]       num_signatures         u8
-        // [1..3]    signature_offset       u16 LE
-        // [3]       signature_ix_index     u8
-        // [4..6]    eth_address_offset     u16 LE
-        // [6]       eth_address_ix_index   u8
-        // [7..9]    message_data_offset    u16 LE
-        // [9]       message_data_ix_index  u8
-        // [10..12]  message_data_size      u16 LE
+        // Parse the Secp256k1SignatureOffsets header (packed struct)
+        // [0]       num_signatures               u8
+        // [1..3]    signature_offset              u16 LE
+        // [3]       signature_instruction_index   u8
+        // [4..6]    eth_address_offset            u16 LE
+        // [6]       eth_address_instruction_index u8
+        // [7..9]    message_data_offset           u16 LE
+        // [9..11]   message_data_size             u16 LE
+        // [11]      message_instruction_index     u8
         let eth_addr_offset = u16::from_le_bytes([data[4], data[5]]) as usize;
         let msg_data_offset = u16::from_le_bytes([data[7], data[8]]) as usize;
-        let msg_data_size   = u16::from_le_bytes([data[10], data[11]]) as usize;
+        let msg_data_size   = u16::from_le_bytes([data[9], data[10]]) as usize;
 
         if data.len() < eth_addr_offset + 20 { continue; }
         if data.len() < msg_data_offset + msg_data_size { continue; }
