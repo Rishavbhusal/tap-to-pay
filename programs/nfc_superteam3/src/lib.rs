@@ -8,7 +8,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use sha3::{Keccak256, Digest};
 use libsecp256k1::{recover, Message, RecoveryId, Signature};
 
-declare_id!("5ue8VUmna8tPpNjHAwizyWpz9L7uHouPxLCeGTuVBiUY"); // Will update after deployment if new address is generated
+declare_id!("5ue8VUmna8tPpNjHAwizyWpz9L7uHouPxLCeGTuVBiUY");
 
 #[program]
 pub mod nfc_smart_vault {
@@ -144,29 +144,15 @@ fn execute_spl_transfer(ctx: Context<ExecuteTap>, amount: u64) -> Result<()> {
 }
 
 fn execute_sol_transfer(ctx: Context<ExecuteTap>, amount: u64) -> Result<()> {
-    let registry = &ctx.accounts.registry;
-    let seeds = &[
-        b"vault" as &[u8],
-        registry.owner_sol.as_ref(),
-        &registry.chip_pubkey[..32],
-        &registry.chip_pubkey[32..],
-        &[registry.bump],
-    ];
-    let signer = &[&seeds[..]];
+    // Transfer SOL directly from the registry PDA by manipulating lamports.
+    // The registry PDA is program-owned, so system_instruction::transfer won't work.
+    // As the owning program, we can directly debit/credit lamports.
+    let registry_info = ctx.accounts.registry.to_account_info();
+    let target_info = ctx.accounts.target_wallet.to_account_info();
 
-    invoke_signed(
-        &system_instruction::transfer(
-            ctx.accounts.sol_vault.key,
-            ctx.accounts.target_wallet.key,
-            amount,
-        ),
-        &[
-            ctx.accounts.sol_vault.to_account_info(),
-            ctx.accounts.target_wallet.to_account_info(),
-            ctx.accounts.system_program.to_account_info(),
-        ],
-        signer,
-    )?;
+    **registry_info.try_borrow_mut_lamports()? -= amount;
+    **target_info.try_borrow_mut_lamports()? += amount;
+
     Ok(())
 }
 
@@ -194,19 +180,21 @@ pub struct ExecuteTap<'info> {
     #[account(mut)]
     pub registry: Account<'info, VaultRegistry>,
 
-    /// CHECK: This is a token account validated in instruction logic
+    /// CHECK: Token account for SPL transfers (validated in instruction logic)
     #[account(mut)]
     pub vault_ata: AccountInfo<'info>,
 
-    /// CHECK: This is a token account validated in instruction logic
+    /// CHECK: Token account for SPL transfers (validated in instruction logic)
     #[account(mut)]
     pub target_ata: AccountInfo<'info>,
 
+    /// CHECK: SOL vault PDA — may be program-owned (registry PDA holds SOL)
     #[account(mut)]
-    pub sol_vault: SystemAccount<'info>,
+    pub sol_vault: AccountInfo<'info>,
 
+    /// CHECK: Target wallet for SOL transfers
     #[account(mut)]
-    pub target_wallet: SystemAccount<'info>,
+    pub target_wallet: AccountInfo<'info>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
