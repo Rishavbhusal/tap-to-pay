@@ -5,7 +5,7 @@
  * pointy snake_case IDL can be found at `nfc_smart_vault.json`.
  */
 export type NfcSmartVault = {
-  address: "9ZUVpnGDNJUdzUwK7LfvhCbFcXaf3c63dHkvrcscWq3R";
+  address: "5ue8VUmna8tPpNjHAwizyWpz9L7uHouPxLCeGTuVBiUY";
   metadata: {
     name: "nfcSmartVault";
     version: "0.1.0";
@@ -73,7 +73,7 @@ export type NfcSmartVault = {
     },
     {
       name: "unfreeze";
-      discriminator: number[];
+      discriminator: [133, 160, 68, 253, 80, 232, 218, 247];
       accounts: [
         { name: "registry"; writable: true },
         { name: "owner"; signer: true }

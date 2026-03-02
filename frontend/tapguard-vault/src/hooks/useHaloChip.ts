@@ -75,22 +75,27 @@ export function useHaloChip() {
    * Try to scan via Web NFC (Android Chrome only).
    * Falls back with an error on iOS or unsupported browsers.
    */
-  const getChipPublicKey = async () => {
+  const getChipPublicKey = async (): Promise<{ address: string } | null> => {
     setIsLoading(true);
     setError(null);
     try {
-      const halo = await import("@arx-research/libhalo");
-      const execFn = halo.execHaloCmdWeb ?? halo.default?.execHaloCmdWeb;
-      if (!execFn) throw new Error("HaLo library not available");
+      // MUST use the /api/web sub-path — the main entry exports nothing
+      const { execHaloCmdWeb } = await import("@arx-research/libhalo/api/web");
 
-      const result = await execFn({
-        name: "sign",
-        keyNo: 1,
-        message: "init",
-        format: "text",
+      const result = await execHaloCmdWeb({
+        name: "get_pkeys",
       });
+
+      // result.publicKeys is { 1: "04abcdef...", 2: "04..." }
+      const pk1: string | undefined = result?.publicKeys?.[1];
+      if (!pk1) {
+        setIsLoading(false);
+        return null;
+      }
+
+      const normalized = normalizeChipPubkey(pk1);
       setIsLoading(false);
-      return result;
+      return { address: normalized };
     } catch (e: any) {
       setError(e.message || "Unknown error");
       setIsLoading(false);

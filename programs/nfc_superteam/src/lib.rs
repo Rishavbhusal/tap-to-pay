@@ -1,14 +1,10 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{
-    program::invoke_signed,
-    system_instruction,
-};
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use borsh::{BorshDeserialize, BorshSerialize};
 use sha3::{Keccak256, Digest};
 use libsecp256k1::{recover, Message, RecoveryId, Signature};
 
-declare_id!("5ue8VUmna8tPpNjHAwizyWpz9L7uHouPxLCeGTuVBiUY"); // Will update after deployment if new address is generated
+declare_id!("9ZUVpnGDNJUdzUwK7LfvhCbFcXaf3c63dHkvrcscWq3R");
 
 #[program]
 pub mod nfc_smart_vault {
@@ -144,29 +140,14 @@ fn execute_spl_transfer(ctx: Context<ExecuteTap>, amount: u64) -> Result<()> {
 }
 
 fn execute_sol_transfer(ctx: Context<ExecuteTap>, amount: u64) -> Result<()> {
-    let registry = &ctx.accounts.registry;
-    let seeds = &[
-        b"vault" as &[u8],
-        registry.owner_sol.as_ref(),
-        &registry.chip_pubkey[..32],
-        &registry.chip_pubkey[32..],
-        &[registry.bump],
-    ];
-    let signer = &[&seeds[..]];
+    // Directly debit lamports from the registry PDA (program-owned)
+    // and credit the target wallet. No system_instruction::transfer needed.
+    let registry_info = ctx.accounts.registry.to_account_info();
+    let target_info = ctx.accounts.target_wallet.to_account_info();
 
-    invoke_signed(
-        &system_instruction::transfer(
-            ctx.accounts.sol_vault.key,
-            ctx.accounts.target_wallet.key,
-            amount,
-        ),
-        &[
-            ctx.accounts.sol_vault.to_account_info(),
-            ctx.accounts.target_wallet.to_account_info(),
-            ctx.accounts.system_program.to_account_info(),
-        ],
-        signer,
-    )?;
+    **registry_info.try_borrow_mut_lamports()? -= amount;
+    **target_info.try_borrow_mut_lamports()? += amount;
+
     Ok(())
 }
 
@@ -202,11 +183,13 @@ pub struct ExecuteTap<'info> {
     #[account(mut)]
     pub target_ata: AccountInfo<'info>,
 
+    /// CHECK: SOL vault — can be registry PDA or separate PDA; lamports debited directly
     #[account(mut)]
-    pub sol_vault: SystemAccount<'info>,
+    pub sol_vault: AccountInfo<'info>,
 
+    /// CHECK: Target wallet receiving SOL
     #[account(mut)]
-    pub target_wallet: SystemAccount<'info>,
+    pub target_wallet: AccountInfo<'info>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,

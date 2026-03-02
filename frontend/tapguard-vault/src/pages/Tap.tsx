@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useSearchParams } from "react-router-dom";
+import MobileWalletHelper from "@/components/MobileWalletHelper";
 import {
   Zap,
   CheckCircle,
@@ -23,11 +25,23 @@ import {
   serializeTapPayload,
   hashPayload,
   hexToBytes,
+  bytesToHex,
   type TapPayloadFields,
 } from "@/lib/payload";
 import { toast } from "sonner";
 
-type TapState = "idle" | "waiting" | "verifying" | "success" | "error";
+type TapState = "idle" | "waiting" | "verifying" | "success" | "error" | "nfc_done_mobile";
+
+/** Detect mobile device */
+function isMobileDevice(): boolean {
+  return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
+}
+
+/** Detect if running inside Phantom's in-app browser */
+function isPhantomBrowser(): boolean {
+  const ua = navigator.userAgent || "";
+  return /Phantom/i.test(ua) || !!(window as any).solana?.isPhantom;
+}
 
 export default function TapPage() {
   const [amount, setAmount] = useState("0.1");
@@ -39,6 +53,86 @@ export default function TapPage() {
   const { connected, publicKey } = useWallet();
   const { vault, vaultPDA, refreshVault, network } = useSolana();
   const program = useProgram();
+  const [searchParams] = useSearchParams();
+
+  const isMobile = isMobileDevice();
+  const inPhantom = isPhantomBrowser();
+  const isMobileChromeFlow = isMobile && !inPhantom;
+
+  // State for NFC signature data passed from Chrome via URL params
+  const [nfcPayloadHex, setNfcPayloadHex] = useState("");
+  const [nfcSigHex, setNfcSigHex] = useState("");
+  const [nfcRecoveryId, setNfcRecoveryId] = useState(0);
+
+  // If opened in Phantom from deep link with NFC signature data
+  useEffect(() => {
+    const sig = searchParams.get('sig');
+    const payload = searchParams.get('payload');
+    const rv = searchParams.get('rv');
+    const amt = searchParams.get('amount');
+    const tgt = searchParams.get('target');
+    if (sig && payload && rv !== null && amt && tgt) {
+      setNfcSigHex(sig);
+      setNfcPayloadHex(payload);
+      setNfcRecoveryId(parseInt(rv, 10));
+      setAmount(amt);
+      setTargetAddress(tgt);
+      // Auto-advance to confirming state so user just signs the wallet tx
+      setState("verifying");
+    }
+  }, [searchParams]);
+
+  // Submit the execute_tap transaction using pre-signed NFC data (from URL params in Phantom)
+  const submitNfcTx = useCallback(async () => {
+    if (!program || !publicKey || !vault || !vaultPDA) {
+      toast.error("Wallet not connected or vault not found");
+      return;
+    }
+    try {
+      let targetPubkey: PublicKey;
+      try {
+        targetPubkey = new PublicKey(targetAddress.trim());
+      } catch {
+        toast.error("Invalid target wallet address");
+        return;
+      }
+
+      const payloadBytes = hexToBytes(nfcPayloadHex);
+      const sigBytes = [...hexToBytes(nfcSigHex)];
+      const chipPubkey = vault.chipPubkey;
+      const [derivedPDA] = getVaultPDA(publicKey, chipPubkey);
+
+      const txSigResult = await executeTap(
+        program,
+        vaultPDA,
+        vaultPDA,
+        targetPubkey,
+        derivedPDA,
+        targetPubkey,
+        payloadBytes,
+        sigBytes,
+        nfcRecoveryId
+      );
+
+      setTxSig(txSigResult);
+      setState("success");
+      toast.success("Payment confirmed on Solana!");
+      refreshVault();
+    } catch (err: any) {
+      console.error("execute_tap failed:", err);
+      const msg = err?.message || "Transaction failed";
+      setErrorMsg(msg);
+      setState("error");
+      toast.error(msg);
+    }
+  }, [program, publicKey, vault, vaultPDA, targetAddress, nfcPayloadHex, nfcSigHex, nfcRecoveryId, refreshVault]);
+
+  // When we arrive in Phantom with NFC data and wallet is connected, auto-submit
+  useEffect(() => {
+    if (state === "verifying" && nfcPayloadHex && nfcSigHex && connected && vault) {
+      submitNfcTx();
+    }
+  }, [state, nfcPayloadHex, nfcSigHex, connected, vault, submitNfcTx]);
 
   // Refresh vault data on mount
   useEffect(() => {
@@ -91,17 +185,32 @@ export default function TapPage() {
     const payloadBytes = serializeTapPayload(payload);
     const digestHex = hashPayload(payloadBytes);
 
+    // Check Web NFC support before attempting NFC sign
+    const hasWebNFC = (() => {
+      try { return typeof (window as any).NDEFReader === "function"; } catch { return false; }
+    })();
+    const inPhantom = /Phantom/i.test(navigator.userAgent) || !!(window as any).solana?.isPhantom;
+
+    if (!hasWebNFC) {
+      const reason = inPhantom
+        ? "Web NFC is not available inside Phantom's browser. Open this page in Chrome on Android to use NFC tap-to-pay."
+        : "Web NFC is not supported in this browser. Use Chrome on Android.";
+      setErrorMsg(reason);
+      setState("error");
+      toast.error(reason);
+      return;
+    }
+
     // Show NFC tap screen
     setState("waiting");
     toast.info("Hold your NFC chip near your phone...");
 
     try {
       // Sign via HaLo NFC chip
-      const halo = await import("@arx-research/libhalo");
-      const execFn = halo.execHaloCmdWeb ?? (halo as any).default?.execHaloCmdWeb;
-      if (!execFn) throw new Error("HaLo library not available. Use Android Chrome.");
+      // MUST use the /api/web sub-path — the main entry exports nothing
+      const { execHaloCmdWeb } = await import("@arx-research/libhalo/api/web");
 
-      const haloResult = await execFn({
+      const haloResult = await execHaloCmdWeb({
         name: "sign",
         keyNo: 1,
         digest: digestHex,
@@ -118,6 +227,18 @@ export default function TapPage() {
       const sigBytes: number[] = [...rBytes, ...sBytes];
       const recoveryId = v - 27; // HaLo returns 27/28, contract expects 0/1
 
+      // On mobile Chrome: deep-link to Phantom with NFC signature data
+      if (isMobileChromeFlow) {
+        const sigHex = bytesToHex(new Uint8Array(sigBytes));
+        const payloadHex = bytesToHex(new Uint8Array(payloadBytes));
+        const tapUrl = `${window.location.origin}/tap?sig=${sigHex}&payload=${payloadHex}&rv=${recoveryId}&amount=${amount}&target=${targetAddress.trim()}`;
+        const phantomUrl = `https://phantom.app/ul/browse/${encodeURIComponent(tapUrl)}`;
+        setState("nfc_done_mobile");
+        toast.success("NFC signed! Opening Phantom to complete payment...");
+        setTimeout(() => { window.location.href = phantomUrl; }, 1500);
+        return;
+      }
+
       setState("verifying");
 
       // Build accounts for execute_tap (SOL transfer)
@@ -125,7 +246,7 @@ export default function TapPage() {
       const chipPubkey = vault.chipPubkey;
       const [derivedPDA] = getVaultPDA(publicKey, chipPubkey);
 
-      const tx = await executeTap(
+      const txSigResult = await executeTap(
         program,
         vaultPDA,
         vaultPDA,        // vault_ata placeholder (not used for SOL)
@@ -137,7 +258,7 @@ export default function TapPage() {
         recoveryId
       );
 
-      setTxSig(tx);
+      setTxSig(txSigResult);
       setState("success");
       toast.success("Payment confirmed on Solana!");
       refreshVault();
@@ -150,6 +271,8 @@ export default function TapPage() {
     }
   };
 
+  // If NFC data was received from URL params (Phantom deep link) but not connected yet,
+  // show connect wallet screen
   if (!connected) {
     return (
       <motion.div
@@ -168,9 +291,14 @@ export default function TapPage() {
           </div>
           <h2 className="text-2xl font-bold mb-2">Connect Your Wallet</h2>
           <p className="text-muted-foreground text-sm mb-6">
-            Connect a Solana wallet to make tap payments.
+            {nfcPayloadHex
+              ? "Connect your wallet to complete the NFC payment."
+              : isMobileChromeFlow
+              ? "Open this page in Phantom\u2019s browser to make tap payments. Use Chrome only for NFC scanning."
+              : "Connect a Solana wallet to make tap payments."}
           </p>
           <WalletMultiButton />
+          <MobileWalletHelper />
         </motion.div>
       </motion.div>
     );
@@ -378,6 +506,24 @@ export default function TapPage() {
                   New Payment
                 </Button>
               </div>
+            </motion.div>
+          )}
+
+          {/* ── NFC done on mobile Chrome – redirecting to Phantom ── */}
+          {state === "nfc_done_mobile" && (
+            <motion.div
+              key="nfc_done_mobile"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              className="glass-card p-12 text-center"
+            >
+              <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
+              <h2 className="text-xl font-bold mb-2">NFC Signed!</h2>
+              <p className="text-muted-foreground text-sm mb-4">
+                Opening Phantom to complete the payment...
+              </p>
+              <Loader2 className="w-6 h-6 text-primary mx-auto animate-spin" />
             </motion.div>
           )}
 

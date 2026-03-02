@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import MobileWalletHelper from "@/components/MobileWalletHelper";
 import {
   Wallet,
   ArrowDown,
@@ -29,7 +30,7 @@ import {
 import { toast } from "sonner";
 
 export default function FundVault() {
-  const { connected, publicKey, sendTransaction } = useWallet();
+  const { connected, publicKey, signTransaction } = useWallet();
   const {
     vault,
     vaultPDA,
@@ -64,7 +65,7 @@ export default function FundVault() {
   }, [fetchVaultBalance, refreshBalance]);
 
   const handleDeposit = async () => {
-    if (!publicKey || !vaultPDA || !sendTransaction) return;
+    if (!publicKey || !vaultPDA || !signTransaction) return;
 
     const amtFloat = parseFloat(amount);
     if (!amtFloat || amtFloat <= 0) {
@@ -85,7 +86,11 @@ export default function FundVault() {
         })
       );
 
-      const sig = await sendTransaction(tx, connection);
+      tx.feePayer = publicKey;
+      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+      const signed = await signTransaction(tx);
+      const sig = await connection.sendRawTransaction(signed.serialize());
       await connection.confirmTransaction(sig, "confirmed");
       setTxSig(sig);
       toast.success(`Deposited ${amtFloat} SOL into vault!`);
@@ -125,6 +130,7 @@ export default function FundVault() {
             Connect a Solana wallet to fund your vault.
           </p>
           <WalletMultiButton />
+          <MobileWalletHelper />
         </motion.div>
       </motion.div>
     );

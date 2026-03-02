@@ -43,6 +43,8 @@ export function getVaultPDA(
 }
 
 // ── Instruction: init_vault ───────────────────────────────────────
+// Uses .rpc() which goes through AnchorProvider → wallet.signTransaction()
+// This reliably triggers the Phantom approval popup in its in-app browser.
 export async function initVault(
   program: Program<NfcSmartVault>,
   owner: PublicKey,
@@ -51,7 +53,7 @@ export async function initVault(
 ) {
   const [registryPDA] = getVaultPDA(owner, chipPubkey);
 
-  const tx = await program.methods
+  const sig = await program.methods
     .initVault(chipPubkey, dailyLimitLamports)
     .accounts({
       registry: registryPDA,
@@ -60,7 +62,7 @@ export async function initVault(
     })
     .rpc();
 
-  return { tx, registryPDA };
+  return { sig, registryPDA };
 }
 
 // ── Instruction: set_limit ────────────────────────────────────────
@@ -69,16 +71,14 @@ export async function setLimit(
   registryPDA: PublicKey,
   owner: PublicKey,
   newLimitLamports: BN
-) {
-  const tx = await program.methods
+): Promise<string> {
+  return program.methods
     .setLimit(newLimitLamports)
     .accounts({
       registry: registryPDA,
       owner,
     })
     .rpc();
-
-  return tx;
 }
 
 // ── Instruction: emergency_freeze ─────────────────────────────────
@@ -86,16 +86,14 @@ export async function emergencyFreeze(
   program: Program<NfcSmartVault>,
   registryPDA: PublicKey,
   owner: PublicKey
-) {
-  const tx = await program.methods
+): Promise<string> {
+  return program.methods
     .emergencyFreeze()
     .accounts({
       registry: registryPDA,
       owner,
     })
     .rpc();
-
-  return tx;
 }
 
 // ── Instruction: unfreeze ─────────────────────────────────────────
@@ -103,16 +101,14 @@ export async function unfreezeVault(
   program: Program<NfcSmartVault>,
   registryPDA: PublicKey,
   owner: PublicKey
-) {
-  const tx = await program.methods
+): Promise<string> {
+  return program.methods
     .unfreeze()
     .accounts({
       registry: registryPDA,
       owner,
     })
     .rpc();
-
-  return tx;
 }
 
 // ── Instruction: execute_tap ──────────────────────────────────────
@@ -126,8 +122,8 @@ export async function executeTap(
   payloadBytes: Uint8Array,
   signature: number[],
   recoveryId: number
-) {
-  const tx = await program.methods
+): Promise<string> {
+  return program.methods
     .executeTap(Buffer.from(payloadBytes), signature, recoveryId)
     .accounts({
       registry: registryPDA,
@@ -139,8 +135,6 @@ export async function executeTap(
       systemProgram: SystemProgram.programId,
     })
     .rpc();
-
-  return tx;
 }
 
 // ── Fetch a single vault account ──────────────────────────────────

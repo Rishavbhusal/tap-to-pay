@@ -3,6 +3,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
+import MobileWalletHelper from "@/components/MobileWalletHelper";
 import { BN } from "@coral-xyz/anchor";
 import {
   Wallet,
@@ -50,6 +51,7 @@ function ConnectOverlay() {
           Connect a Solana wallet to access your vault dashboard.
         </p>
         <WalletMultiButton />
+        <MobileWalletHelper />
       </motion.div>
     </motion.div>
   );

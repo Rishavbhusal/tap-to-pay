@@ -54,8 +54,8 @@ export default function Settings() {
     setUpdating(true);
     try {
       const newLimitLamports = new BN(solToLamports(newLimit));
-      const tx = await setLimitIx(program, vaultPDA, publicKey, newLimitLamports);
-      console.log("Limit updated, tx:", tx);
+      const sig = await setLimitIx(program, vaultPDA, publicKey, newLimitLamports);
+      console.log("Limit updated, tx:", sig);
       toast.success(`Daily limit updated to ${newLimit.toFixed(1)} SOL`);
       await refreshVault();
     } catch (err: any) {
@@ -70,8 +70,8 @@ export default function Settings() {
     if (!program || !publicKey || !vaultPDA) return;
     setFreezing(true);
     try {
-      const tx = await emergencyFreezeIx(program, vaultPDA, publicKey);
-      console.log("Vault frozen, tx:", tx);
+      const sig = await emergencyFreezeIx(program, vaultPDA, publicKey);
+      console.log("Vault frozen, tx:", sig);
       toast.success("Vault has been frozen. All tap payments are disabled.");
       await refreshVault();
     } catch (err: any) {
@@ -186,8 +186,8 @@ export default function Settings() {
               if (!program || !publicKey || !vaultPDA) return;
               setUnfreezing(true);
               try {
-                const tx = await unfreezeIx(program, vaultPDA, publicKey);
-                console.log("Vault unfrozen, tx:", tx);
+                const sig = await unfreezeIx(program, vaultPDA, publicKey);
+                console.log("Vault unfrozen, tx:", sig);
                 toast.success("Vault has been unfrozen. Tap payments are enabled again.");
                 await refreshVault();
               } catch (err: any) {
