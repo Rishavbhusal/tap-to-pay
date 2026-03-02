@@ -1,12 +1,11 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{
-    program::invoke_signed,
-    system_instruction,
+    sysvar::instructions as ix_sysvar,
+    secp256k1_program,
 };
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use borsh::{BorshDeserialize, BorshSerialize};
 use sha3::{Keccak256, Digest};
-use libsecp256k1::{recover, Message, RecoveryId, Signature};
 
 declare_id!("5ue8VUmna8tPpNjHAwizyWpz9L7uHouPxLCeGTuVBiUY");
 
@@ -56,19 +55,17 @@ pub mod nfc_smart_vault {
         // Nonce check
         require!(payload.nonce == registry.nonce, VaultError::InvalidNonce);
 
-        // Signature verification
-        let mut hasher = Keccak256::new();
-        hasher.update(&payload_bytes);
-        let hash = hasher.finalize();
-        let message = Message::parse_slice(&hash).map_err(|_| VaultError::SignatureVerificationFailed)?;
-        let rec_id = RecoveryId::parse(recovery_id).map_err(|_| VaultError::SignatureVerificationFailed)?;
-        let sig = Signature::parse_standard_slice(&signature).map_err(|_| VaultError::SignatureVerificationFailed)?;
-        let recovered = recover(&message, &sig, &rec_id).map_err(|_| VaultError::SignatureVerificationFailed)?;
-        let recovered_bytes = recovered.serialize();
-        require!(
-            &recovered_bytes[..64] == &registry.chip_pubkey[..],
-            VaultError::SignatureVerificationFailed
-        );
+        // ── Signature verification via Secp256k1 native precompile ──
+        // Instead of running the expensive libsecp256k1::recover on-chain
+        // (which blows past the CU meter), we require the transaction to
+        // include a Secp256k1Program precompile instruction that already
+        // verified the NFC chip's signature.  We just check the precompile
+        // instruction is present and used the correct public key + message.
+        verify_secp256k1_precompile(
+            &ctx.accounts.instructions,
+            &payload_bytes,
+            &registry.chip_pubkey,
+        )?;
 
         // Daily limit reset
         let current_day = now / 86400;
@@ -118,6 +115,80 @@ pub mod nfc_smart_vault {
         registry.daily_limit = new_limit;
         Ok(())
     }
+}
+
+// ── Verify Secp256k1 precompile instruction in this transaction ─────
+// The Secp256k1Program native precompile verifies an secp256k1 ECDSA
+// signature at the transaction level.  Our program just confirms the
+// precompile instruction used the right eth-address (derived from the
+// NFC chip's 64-byte uncompressed public key) and the right message.
+fn verify_secp256k1_precompile(
+    instructions_account: &AccountInfo,
+    expected_message: &[u8],
+    chip_pubkey: &[u8; 64],
+) -> Result<()> {
+    // Derive the expected Ethereum-style address: keccak256(pubkey)[12..32]
+    let mut hasher = Keccak256::new();
+    hasher.update(chip_pubkey);
+    let pk_hash = hasher.finalize();
+    let expected_eth_addr = &pk_hash[12..32]; // last 20 bytes
+
+    // Walk backwards from the current instruction to find the precompile ix
+    let current_idx = ix_sysvar::load_current_index_checked(instructions_account)
+        .map_err(|_| error!(VaultError::SignatureVerificationFailed))? as usize;
+
+    for i in 0..current_idx {
+        let ix = ix_sysvar::load_instruction_at_checked(i, instructions_account)
+            .map_err(|_| error!(VaultError::SignatureVerificationFailed))?;
+
+        if ix.program_id != secp256k1_program::ID {
+            continue;
+        }
+
+        let data = &ix.data;
+        // Minimum header: 1 (num_sigs) + 11 (offsets struct) = 12 bytes
+        if data.len() < 12 {
+            continue;
+        }
+
+        // Parse the Secp256k1SignatureOffsets header
+        // [0]       num_signatures         u8
+        // [1..3]    signature_offset       u16 LE
+        // [3]       signature_ix_index     u8
+        // [4..6]    eth_address_offset     u16 LE
+        // [6]       eth_address_ix_index   u8
+        // [7..9]    message_data_offset    u16 LE
+        // [9]       message_data_ix_index  u8
+        // [10..12]  message_data_size      u16 LE
+        let eth_addr_offset = u16::from_le_bytes([data[4], data[5]]) as usize;
+        let msg_data_offset = u16::from_le_bytes([data[7], data[8]]) as usize;
+        let msg_data_size   = u16::from_le_bytes([data[10], data[11]]) as usize;
+
+        if data.len() < eth_addr_offset + 20 { continue; }
+        if data.len() < msg_data_offset + msg_data_size { continue; }
+
+        let eth_addr = &data[eth_addr_offset..eth_addr_offset + 20];
+        let message  = &data[msg_data_offset..msg_data_offset + msg_data_size];
+
+        // The eth address must match keccak256(chip_pubkey)[12..32]
+        require!(
+            eth_addr == expected_eth_addr,
+            VaultError::SignatureVerificationFailed
+        );
+
+        // The message must match the exact payload bytes we are processing
+        require!(
+            message == expected_message,
+            VaultError::SignatureVerificationFailed
+        );
+
+        // If we reach here, the precompile verified the signature and
+        // we confirmed the key + message match.  All good!
+        return Ok(());
+    }
+
+    // No matching precompile instruction found
+    Err(VaultError::SignatureVerificationFailed.into())
 }
 
 // ------------------------ Internal Transfers ------------------------
@@ -198,6 +269,10 @@ pub struct ExecuteTap<'info> {
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
+
+    /// CHECK: Instructions sysvar — used to verify secp256k1 precompile
+    #[account(address = ix_sysvar::ID)]
+    pub instructions: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]

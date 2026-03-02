@@ -38,6 +38,10 @@ export type NfcSmartVault = {
         {
           name: "systemProgram";
           address: "11111111111111111111111111111111";
+        },
+        {
+          name: "instructions";
+          address: "Sysvar1nstructions1111111111111111111111111";
         }
       ];
       args: [

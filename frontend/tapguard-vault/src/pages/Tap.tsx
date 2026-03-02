@@ -111,7 +111,8 @@ export default function TapPage() {
         targetPubkey,
         payloadBytes,
         sigBytes,
-        nfcRecoveryId
+        nfcRecoveryId,
+        chipPubkey
       );
 
       setTxSig(txSigResult);
@@ -255,7 +256,8 @@ export default function TapPage() {
         targetPubkey,    // target_wallet
         payloadBytes,
         sigBytes,
-        recoveryId
+        recoveryId,
+        chipPubkey
       );
 
       setTxSig(txSigResult);

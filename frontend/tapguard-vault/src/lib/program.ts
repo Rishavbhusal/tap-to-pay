@@ -1,5 +1,12 @@
 import { Program, AnchorProvider, BN } from "@coral-xyz/anchor";
-import { Connection, PublicKey, SystemProgram } from "@solana/web3.js";
+import {
+  Connection,
+  PublicKey,
+  SystemProgram,
+  ComputeBudgetProgram,
+  Secp256k1Program,
+  SYSVAR_INSTRUCTIONS_PUBKEY,
+} from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { type NfcSmartVault } from "./idl/nfc_smart_vault";
 import idlJson from "./idl/nfc_smart_vault.json";
@@ -112,6 +119,10 @@ export async function unfreezeVault(
 }
 
 // ── Instruction: execute_tap ──────────────────────────────────────
+// Uses the Secp256k1 native precompile for signature verification
+// instead of the expensive libsecp256k1::recover on-chain (~200k CUs).
+// The precompile runs as a separate instruction in the same transaction
+// and costs only a few hundred CUs.
 export async function executeTap(
   program: Program<NfcSmartVault>,
   registryPDA: PublicKey,
@@ -121,10 +132,22 @@ export async function executeTap(
   targetWallet: PublicKey,
   payloadBytes: Uint8Array,
   signature: number[],
-  recoveryId: number
+  recoveryId: number,
+  chipPubkey: number[] | Uint8Array
 ): Promise<string> {
+  // Build the secp256k1 precompile instruction.
+  // The precompile takes the raw message (payload_bytes), internally
+  // hashes it with keccak256, then does ecrecover. This matches what
+  // the HaLo NFC chip signed (keccak256 of payload_bytes).
+  const secp256k1Ix = Secp256k1Program.createInstructionWithPublicKey({
+    publicKey: Buffer.from(chipPubkey),
+    message: Buffer.from(payloadBytes),
+    signature: Buffer.from(signature),
+    recoveryId,
+  });
+
   return program.methods
-    .executeTap(Buffer.from(payloadBytes), signature, recoveryId)
+    .executeTap(Buffer.from(payloadBytes), Array.from(signature), recoveryId)
     .accounts({
       registry: registryPDA,
       vaultAta,
@@ -133,7 +156,12 @@ export async function executeTap(
       targetWallet,
       tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
+      instructions: SYSVAR_INSTRUCTIONS_PUBKEY,
     })
+    .preInstructions([
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }),
+      secp256k1Ix,
+    ])
     .rpc();
 }
 
