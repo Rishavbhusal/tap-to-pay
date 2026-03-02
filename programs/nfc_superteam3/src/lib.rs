@@ -1,11 +1,15 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{
-    sysvar::instructions as ix_sysvar,
-    secp256k1_program,
-};
+use anchor_lang::solana_program::sysvar::instructions as ix_sysvar;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use borsh::{BorshDeserialize, BorshSerialize};
 use sha3::{Keccak256, Digest};
+
+/// The on-chain Secp256k1 native program ID: KeccakSecp256k11111111111111111111111111111
+/// Hardcoded as raw bytes to avoid depending on any crate re-export.
+const SECP256K1_PROGRAM_ID: Pubkey = Pubkey::new_from_array([
+    4, 198, 252, 32, 240, 80, 204, 240, 85, 132, 215, 33, 28, 159, 140, 245,
+    158, 193, 71, 133, 187, 22, 106, 30, 40, 48, 232, 18, 32, 0, 0, 0,
+]);
 
 declare_id!("5ue8VUmna8tPpNjHAwizyWpz9L7uHouPxLCeGTuVBiUY");
 
@@ -141,7 +145,7 @@ fn verify_secp256k1_precompile(
         let ix = ix_sysvar::load_instruction_at_checked(i, instructions_account)
             .map_err(|_| error!(VaultError::SignatureVerificationFailed))?;
 
-        if ix.program_id != secp256k1_program::ID {
+        if ix.program_id != SECP256K1_PROGRAM_ID {
             continue;
         }
 
