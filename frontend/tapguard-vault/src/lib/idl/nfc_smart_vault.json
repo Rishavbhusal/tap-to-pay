@@ -259,6 +259,11 @@
       "code": 6009,
       "name": "Unauthorized",
       "msg": "Unauthorized"
+    },
+    {
+      "code": 6010,
+      "name": "InsufficientFunds",
+      "msg": "Insufficient funds (would drop below rent-exemption)"
     }
   ],
   "types": [
