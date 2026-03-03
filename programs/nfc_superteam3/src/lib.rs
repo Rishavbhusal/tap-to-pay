@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::sysvar::instructions as ix_sysvar;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer};
+use anchor_spl::token::{self, Token, Transfer};
 use borsh::{BorshDeserialize, BorshSerialize};
 use sha3::{Keccak256, Digest};
 
@@ -63,50 +63,56 @@ pub mod nfc_smart_vault {
         ctx: Context<ExecutePassiveTap>,
         counter: u32,
     ) -> Result<()> {
-        let registry = &mut ctx.accounts.registry;
-        require!(!registry.frozen, VaultError::VaultFrozen);
+        // Read all needed values from registry first, then drop the mutable borrow
+        let tap_amount: u64;
+        {
+            let registry = &mut ctx.accounts.registry;
+            require!(!registry.frozen, VaultError::VaultFrozen);
 
-        // Relay must be the authorized relay for this vault
-        require!(
-            ctx.accounts.relay.key() == registry.relay_authority,
-            VaultError::Unauthorized
-        );
+            // Relay must be the authorized relay for this vault
+            require!(
+                ctx.accounts.relay.key() == registry.relay_authority,
+                VaultError::Unauthorized
+            );
 
-        // Tap config must be set
-        require!(
-            registry.tap_target != Pubkey::default(),
-            VaultError::InvalidAction
-        );
-        require!(registry.tap_amount > 0, VaultError::InvalidAction);
+            // Tap config must be set
+            require!(
+                registry.tap_target != Pubkey::default(),
+                VaultError::InvalidAction
+            );
+            require!(registry.tap_amount > 0, VaultError::InvalidAction);
 
-        // Target wallet must match the configured tap_target
-        require!(
-            ctx.accounts.target_wallet.key() == registry.tap_target,
-            VaultError::Unauthorized
-        );
+            // Target wallet must match the configured tap_target
+            require!(
+                ctx.accounts.target_wallet.key() == registry.tap_target,
+                VaultError::Unauthorized
+            );
 
-        // Counter must strictly increase (prevents replay of same NFC URL)
-        require!(counter > registry.last_counter, VaultError::InvalidNonce);
-        registry.last_counter = counter;
+            // Counter must strictly increase (prevents replay of same NFC URL)
+            require!(counter > registry.last_counter, VaultError::InvalidNonce);
+            registry.last_counter = counter;
 
-        // Daily limit check
-        let now = Clock::get()?.unix_timestamp;
-        let current_day = now / 86400;
-        if current_day > registry.last_day {
-            registry.daily_spend = 0;
-            registry.last_day = current_day;
+            // Daily limit check
+            let now = Clock::get()?.unix_timestamp;
+            let current_day = now / 86400;
+            if current_day > registry.last_day {
+                registry.daily_spend = 0;
+                registry.last_day = current_day;
+            }
+            require!(
+                registry.daily_spend + registry.tap_amount <= registry.daily_limit,
+                VaultError::DailyLimitExceeded
+            );
+            registry.daily_spend += registry.tap_amount;
+            tap_amount = registry.tap_amount;
         }
-        require!(
-            registry.daily_spend + registry.tap_amount <= registry.daily_limit,
-            VaultError::DailyLimitExceeded
-        );
-        registry.daily_spend += registry.tap_amount;
 
         // SOL transfer: debit registry PDA, credit target
+        // (no mutable borrow of registry alive here)
         let registry_info = ctx.accounts.registry.to_account_info();
         let target_info = ctx.accounts.target_wallet.to_account_info();
-        **registry_info.try_borrow_mut_lamports()? -= registry.tap_amount;
-        **target_info.try_borrow_mut_lamports()? += registry.tap_amount;
+        **registry_info.try_borrow_mut_lamports()? -= tap_amount;
+        **target_info.try_borrow_mut_lamports()? += tap_amount;
 
         Ok(())
     }
@@ -116,8 +122,8 @@ pub mod nfc_smart_vault {
     pub fn execute_tap(
         ctx: Context<ExecuteTap>,
         payload_bytes: Vec<u8>,
-        signature: [u8; 64],
-        recovery_id: u8,
+        _signature: [u8; 64],
+        _recovery_id: u8,
     ) -> Result<()> {
         let registry = &mut ctx.accounts.registry;
         require!(!registry.frozen, VaultError::VaultFrozen);
