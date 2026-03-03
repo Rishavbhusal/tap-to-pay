@@ -1,6 +1,6 @@
 import { PublicKey } from "@solana/web3.js";
 
-export const PROGRAM_ID = new PublicKey("5ue8VUmna8tPpNjHAwizyWpz9L7uHouPxLCeGTuVBiUY");
+export const PROGRAM_ID = new PublicKey("6w8VdnhWQpPypZyVtYiq7ajznigpnwa72DmWGX3GveL8");
 
 export const DEVNET_RPC = "https://api.devnet.solana.com";
 export const MAINNET_RPC = "https://api.mainnet-beta.solana.com";

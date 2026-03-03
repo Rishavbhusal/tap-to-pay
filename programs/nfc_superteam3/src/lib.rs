@@ -10,7 +10,7 @@ const SECP256K1_PROGRAM_ID: Pubkey = Pubkey::new_from_array([
     158, 193, 71, 133, 187, 22, 106, 30, 40, 48, 232, 18, 32, 0, 0, 0,
 ]);
 
-declare_id!("5ue8VUmna8tPpNjHAwizyWpz9L7uHouPxLCeGTuVBiUY");
+declare_id!("6w8VdnhWQpPypZyVtYiq7ajznigpnwa72DmWGX3GveL8");
 
 #[program]
 pub mod nfc_smart_vault {

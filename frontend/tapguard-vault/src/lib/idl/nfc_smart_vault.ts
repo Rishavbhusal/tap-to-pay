@@ -5,7 +5,7 @@
  * pointy snake_case IDL can be found at `nfc_smart_vault.json`.
  */
 export type NfcSmartVault = {
-  address: "5ue8VUmna8tPpNjHAwizyWpz9L7uHouPxLCeGTuVBiUY";
+  address: "6w8VdnhWQpPypZyVtYiq7ajznigpnwa72DmWGX3GveL8";
   metadata: {
     name: "nfcSmartVault";
     version: "0.1.0";
@@ -24,7 +24,7 @@ export type NfcSmartVault = {
     },
     {
       name: "executePassiveTap";
-      discriminator: [0, 0, 0, 0, 0, 0, 0, 0];
+      discriminator: [213, 230, 114, 30, 164, 181, 53, 109];
       accounts: [
         { name: "registry"; writable: true },
         { name: "targetWallet"; writable: true },
@@ -60,8 +60,8 @@ export type NfcSmartVault = {
       ];
       args: [
         { name: "payloadBytes"; type: "bytes" },
-        { name: "signature"; type: { array: ["u8", 64] } },
-        { name: "recoveryId"; type: "u8" }
+        { name: "_signature"; type: { array: ["u8", 64] } },
+        { name: "_recoveryId"; type: "u8" }
       ];
     },
     {
@@ -91,7 +91,7 @@ export type NfcSmartVault = {
     },
     {
       name: "setTapConfig";
-      discriminator: [0, 0, 0, 0, 0, 0, 0, 1];
+      discriminator: [105, 95, 48, 243, 198, 75, 112, 120];
       accounts: [
         { name: "registry"; writable: true },
         { name: "owner"; signer: true }

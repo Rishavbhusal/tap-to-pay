@@ -35,7 +35,7 @@ const path = require("path");
 // ── Config ──────────────────────────────────────────────────────────
 const PORT = 3001;
 const RPC_URL = "https://api.devnet.solana.com";
-const PROGRAM_ID = new PublicKey("5ue8VUmna8tPpNjHAwizyWpz9L7uHouPxLCeGTuVBiUY");
+const PROGRAM_ID = new PublicKey("6w8VdnhWQpPypZyVtYiq7ajznigpnwa72DmWGX3GveL8");
 
 // ── Load relay keypair ──────────────────────────────────────────────
 const keypairPath = path.join(__dirname, "keypair.json");

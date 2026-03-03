@@ -34,13 +34,15 @@ function isPhantomBrowser(): boolean {
 function isMobileDevice(): boolean {
   return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
 }
+function isIOS(): boolean {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
 
 export default function Setup() {
   const [step, setStep] = useState(0);
   const [chipPubkey, setChipPubkey] = useState("");
   const [chipScanned, setChipScanned] = useState(false);
   const [pastedUrl, setPastedUrl] = useState("");
-  const [scanMode, setScanMode] = useState<"nfc" | "url">("url");
   const [creating, setCreating] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -57,7 +59,10 @@ export default function Setup() {
   const webNFCAvailable = isWebNFCSupported();
   const inPhantom = isPhantomBrowser();
   const isMobile = isMobileDevice();
+  const oniPhone = isIOS();
   const isMobileChromeFlow = isMobile && !inPhantom;
+  // Auto-select best scan mode: Web NFC only if supported, else URL paste
+  const [scanMode, setScanMode] = useState<"nfc" | "url">(webNFCAvailable ? "nfc" : "url");
   const { connected, publicKey } = useWallet();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -311,65 +316,130 @@ export default function Setup() {
         {/* ─── Step 0: Scan NFC ─── */}
         {step === 0 && (
           <motion.div key="step-0" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="glass-card p-8 text-center">
-            {/* Mode toggle */}
-            <div className="flex gap-2 mb-6">
-              <Button variant={scanMode === "url" ? "default" : "outline"} onClick={() => setScanMode("url")} className="flex-1 rounded-xl text-xs" size="sm">
-                <Link2 className="w-3 h-3 mr-1" /> Paste URL (any device)
-              </Button>
-              <Button variant={scanMode === "nfc" ? "default" : "outline"} onClick={() => setScanMode("nfc")} className="flex-1 rounded-xl text-xs" size="sm">
-                <Smartphone className="w-3 h-3 mr-1" /> Web NFC (Android)
-              </Button>
-            </div>
 
-            {scanMode === "nfc" ? (
-              <>
-                {!webNFCAvailable && (
-                  <div className="mb-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-left">
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle className="w-4 h-4 text-yellow-500 mt-0.5 shrink-0" />
-                      <p className="text-xs text-yellow-400">
-                        {inPhantom ? "Web NFC is not available in Phantom. Switch to the Paste URL tab." : "Web NFC is not supported. Use Chrome on Android, or Paste URL."}
-                      </p>
-                    </div>
-                  </div>
-                )}
-                <button onClick={handleNfcScan} className="mx-auto mb-6 block" disabled={haloLoading || !webNFCAvailable}>
-                  <div className={`relative w-24 h-24 mx-auto ${!webNFCAvailable ? "opacity-40" : ""}`}>
-                    <div className="absolute inset-0 rounded-full bg-primary/10 pulse-nfc" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      {haloLoading ? <Loader2 className="w-10 h-10 text-primary animate-spin" /> : <Nfc className="w-10 h-10 text-primary" />}
-                    </div>
-                  </div>
-                </button>
-                <h2 className="text-2xl font-bold mb-2">Scan NFC Chip</h2>
-                <p className="text-muted-foreground text-sm mb-6">
-                  {webNFCAvailable ? "Tap the NFC icon, then hold your chip near your phone." : <span className="text-yellow-500">Use the Paste URL tab instead.</span>}
-                </p>
-              </>
-            ) : (
+            {/* iPhone / non-WebNFC: Show a clear guided flow */}
+            {!webNFCAvailable ? (
               <>
                 <div className="relative w-24 h-24 mx-auto mb-6">
-                  <div className="absolute inset-0 rounded-full bg-primary/10" />
-                  <div className="absolute inset-0 flex items-center justify-center"><Link2 className="w-10 h-10 text-primary" /></div>
+                  <div className="absolute inset-0 rounded-full bg-primary/10 pulse-nfc" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Nfc className="w-10 h-10 text-primary" />
+                  </div>
                 </div>
-                <h2 className="text-2xl font-bold mb-2">Paste NFC URL</h2>
-                <p className="text-muted-foreground text-sm mb-4">
-                  1. Tap your NFC wristband — it opens <strong>nfc.ethglobal.com</strong><br />
-                  2. <strong>Copy the full URL</strong> from the address bar<br />
-                  3. Tap the button below
-                </p>
+                <h2 className="text-2xl font-bold mb-3">Link Your NFC Chip</h2>
+
+                {oniPhone ? (
+                  <div className="text-left mb-6 space-y-3">
+                    <p className="text-sm text-muted-foreground text-center mb-4">
+                      iPhone can read NFC chips natively! Follow these quick steps:
+                    </p>
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border border-border/50">
+                      <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="text-xs font-bold text-primary">1</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">Tap your NFC chip on your iPhone</p>
+                        <p className="text-xs text-muted-foreground">Hold it near the top of your phone. A notification will appear.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border border-border/50">
+                      <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="text-xs font-bold text-primary">2</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">Copy the URL from Safari</p>
+                        <p className="text-xs text-muted-foreground">Safari will open a page. Tap the address bar and copy the full URL.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border border-border/50">
+                      <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="text-xs font-bold text-primary">3</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">Come back here & paste it</p>
+                        <p className="text-xs text-muted-foreground">This extracts your chip's unique ID. Only needed once during setup!</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-sm mb-4">
+                    {inPhantom
+                      ? "Web NFC isn't available in Phantom's browser. Tap your NFC chip on your phone — it will open a URL. Copy that URL and paste it below."
+                      : "Tap your NFC chip on your phone — it will open a URL. Copy that full URL and paste it below to extract your chip's public key."}
+                  </p>
+                )}
+
                 <Button onClick={handleClipboardPaste} className="w-full h-14 rounded-xl mb-4 bg-primary text-primary-foreground text-base">
                   <ClipboardPaste className="mr-2 w-5 h-5" /> Paste from Clipboard
                 </Button>
                 <div className="text-left mb-4">
                   <label className="text-xs text-muted-foreground mb-1.5 block">Or paste the URL manually</label>
-                  <textarea placeholder="https://nfc.ethglobal.com/?av=A02.03...&pk1=04..." value={pastedUrl} onChange={handleTextareaChange} rows={4}
+                  <textarea placeholder="https://eth.vrfy.ch/?av=...&pk1=04..." value={pastedUrl} onChange={handleTextareaChange} rows={3}
                     className="w-full font-mono text-xs bg-muted border border-border rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-primary/50" />
                 </div>
                 {!chipScanned && pastedUrl && (
                   <Button onClick={() => handleUrlPaste()} variant="outline" className="w-full rounded-xl mb-4 border-primary/30 text-primary">
                     <Check className="mr-2 w-4 h-4" /> Extract Public Key
                   </Button>
+                )}
+
+                {oniPhone && (
+                  <p className="text-xs text-muted-foreground mt-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                    <strong className="text-blue-400">After setup</strong> — tapping the chip on iPhone will automatically open the payment page. No copy-pasting needed for daily use!
+                  </p>
+                )}
+              </>
+            ) : (
+              /* Android with Web NFC available */
+              <>
+                <div className="flex gap-2 mb-6">
+                  <Button variant={scanMode === "url" ? "default" : "outline"} onClick={() => setScanMode("url")} className="flex-1 rounded-xl text-xs" size="sm">
+                    <Link2 className="w-3 h-3 mr-1" /> Paste URL
+                  </Button>
+                  <Button variant={scanMode === "nfc" ? "default" : "outline"} onClick={() => setScanMode("nfc")} className="flex-1 rounded-xl text-xs" size="sm">
+                    <Smartphone className="w-3 h-3 mr-1" /> Web NFC Scan
+                  </Button>
+                </div>
+
+                {scanMode === "nfc" ? (
+                  <>
+                    <button onClick={handleNfcScan} className="mx-auto mb-6 block" disabled={haloLoading}>
+                      <div className="relative w-24 h-24 mx-auto">
+                        <div className="absolute inset-0 rounded-full bg-primary/10 pulse-nfc" />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          {haloLoading ? <Loader2 className="w-10 h-10 text-primary animate-spin" /> : <Nfc className="w-10 h-10 text-primary" />}
+                        </div>
+                      </div>
+                    </button>
+                    <h2 className="text-2xl font-bold mb-2">Scan NFC Chip</h2>
+                    <p className="text-muted-foreground text-sm mb-6">
+                      Tap the NFC icon, then hold your chip near your phone.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="relative w-24 h-24 mx-auto mb-6">
+                      <div className="absolute inset-0 rounded-full bg-primary/10" />
+                      <div className="absolute inset-0 flex items-center justify-center"><Link2 className="w-10 h-10 text-primary" /></div>
+                    </div>
+                    <h2 className="text-2xl font-bold mb-2">Paste NFC URL</h2>
+                    <p className="text-muted-foreground text-sm mb-4">
+                      Tap your NFC chip — it opens a URL. Copy the full URL and paste below.
+                    </p>
+                    <Button onClick={handleClipboardPaste} className="w-full h-14 rounded-xl mb-4 bg-primary text-primary-foreground text-base">
+                      <ClipboardPaste className="mr-2 w-5 h-5" /> Paste from Clipboard
+                    </Button>
+                    <div className="text-left mb-4">
+                      <label className="text-xs text-muted-foreground mb-1.5 block">Or paste the URL manually</label>
+                      <textarea placeholder="https://eth.vrfy.ch/?av=...&pk1=04..." value={pastedUrl} onChange={handleTextareaChange} rows={3}
+                        className="w-full font-mono text-xs bg-muted border border-border rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-primary/50" />
+                    </div>
+                    {!chipScanned && pastedUrl && (
+                      <Button onClick={() => handleUrlPaste()} variant="outline" className="w-full rounded-xl mb-4 border-primary/30 text-primary">
+                        <Check className="mr-2 w-4 h-4" /> Extract Public Key
+                      </Button>
+                    )}
+                  </>
                 )}
               </>
             )}

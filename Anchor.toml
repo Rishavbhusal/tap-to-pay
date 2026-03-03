@@ -7,7 +7,7 @@ skip-lint = false
 
 
 [programs.devnet]
-nfc_superteam3 = "5ue8VUmna8tPpNjHAwizyWpz9L7uHouPxLCeGTuVBiUY"
+nfc_superteam3 = "6w8VdnhWQpPypZyVtYiq7ajznigpnwa72DmWGX3GveL8"
 
 [registry]
 url = "https://api.apr.dev"
