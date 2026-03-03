@@ -65,7 +65,6 @@ export async function initVault(
     .accounts({
       registry: registryPDA,
       owner,
-      systemProgram: SystemProgram.programId,
     })
     .rpc();
 
@@ -155,12 +154,13 @@ export async function executeTap(
       targetAta,
       solVault,
       targetWallet,
-      tokenProgram: TOKEN_PROGRAM_ID,
-      systemProgram: SystemProgram.programId,
-      instructions: SYSVAR_INSTRUCTIONS_PUBKEY,
     })
     .preInstructions([
-      ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }),
+      // 1️⃣ Compute budget MUST be first — increases from default 200k
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 500_000 }),
+      // 2️⃣ Priority fee (prevents Phantom from injecting its own ComputeBudget ix)
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000 }),
+      // 3️⃣ Secp256k1 precompile — signature verified natively by validator
       secp256k1Ix,
     ])
     .rpc();
