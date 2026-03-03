@@ -149,12 +149,22 @@ export async function executeTap(
     );
   }
 
+  // The instructionIndex tells the precompile which transaction instruction
+  // contains the signature/address/message data.  Since all data is embedded
+  // in the secp256k1 instruction itself, this must equal its position in the
+  // final transaction.  With the preInstructions below the order is:
+  //   0 — ComputeBudgetProgram.setComputeUnitLimit
+  //   1 — ComputeBudgetProgram.setComputeUnitPrice
+  //   2 — secp256k1 precompile  ← this instruction
+  //   3 — executeTap (Anchor)
+  const SECP_IX_INDEX = 2;
+
   const secp256k1Ix = Secp256k1Program.createInstructionWithPublicKey({
     publicKey: Buffer.from(chipPubkey),
     message: Buffer.from(payloadBytes),
     signature: Buffer.from(signature),
     recoveryId,
-    instructionIndex: 0xFF, // 0xFF = read from own instruction data (not positional)
+    instructionIndex: SECP_IX_INDEX,
   });
 
   return program.methods

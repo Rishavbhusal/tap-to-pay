@@ -36,17 +36,37 @@ type TapState = "idle" | "waiting" | "verifying" | "success" | "error" | "nfc_do
 /** Parse Anchor/program errors into a human-readable message */
 function parseAnchorError(err: any): string {
   const raw = err?.message || String(err);
-  // Match "custom program error: 0xHEX" — Anchor errors are 6000 + index
+  // Match "custom program error: 0xHEX" — Anchor errors are 6000+ (0x1770+)
   const hexMatch = raw.match(/custom program error:\s*0x([0-9a-fA-F]+)/);
   if (hexMatch) {
     const code = parseInt(hexMatch[1], 16);
-    // Anchor custom errors start at 6000
+    // Anchor custom errors start at 6000 (0x1770)
     if (code >= 6000 && ANCHOR_ERRORS[code]) {
       return ANCHOR_ERRORS[code];
     }
-    // Sometimes the code is just the offset (0-based), map to 6000+
-    if (code < 100 && ANCHOR_ERRORS[6000 + code]) {
-      return ANCHOR_ERRORS[6000 + code];
+    // Low codes (< 0x100) are Solana built-in or native program errors
+    // Do NOT map them to Anchor errors
+    if (code < 0x100) {
+      // Check which instruction failed to give better context
+      const ixMatch = raw.match(/Instruction (\d+)/i);
+      const ixIdx = ixMatch ? parseInt(ixMatch[1]) : -1;
+      // Built-in Solana error descriptions
+      const builtinErrors: Record<number, string> = {
+        0x0: "Custom error",
+        0x1: "Invalid instruction data",
+        0x2: "Invalid account data",
+        0x3: "Account data too small",
+        0x4: "Insufficient funds",
+        0x5: "Incorrect program ID",
+        0x6: "Missing required signature",
+        0x7: "Account already initialized",
+        0x8: "Uninitialized account",
+      };
+      const desc = builtinErrors[code] || `Unknown error 0x${code.toString(16)}`;
+      if (ixIdx >= 0) {
+        return `${desc} (instruction ${ixIdx}). Check that the vault has enough SOL and all accounts are correct.`;
+      }
+      return desc;
     }
   }
   return raw;
