@@ -52,9 +52,10 @@ pub mod nfc_smart_vault {
         // Check program id
         require!(payload.program_id == crate::ID, VaultError::InvalidProgram);
 
-        // Timestamp (5-min window)
+        // Timestamp (5-min window, reject future timestamps beyond 30s tolerance)
         let now = Clock::get()?.unix_timestamp;
-        require!(now - payload.timestamp <= 300, VaultError::StaleTimestamp);
+        let delta = now - payload.timestamp;
+        require!(delta >= -30 && delta <= 300, VaultError::StaleTimestamp);
 
         // Nonce check
         require!(payload.nonce == registry.nonce, VaultError::InvalidNonce);
@@ -79,7 +80,9 @@ pub mod nfc_smart_vault {
         }
 
         require!(
-            registry.daily_spend + payload.amount <= registry.daily_limit,
+            registry.daily_spend
+                .checked_add(payload.amount)
+                .map_or(false, |total| total <= registry.daily_limit),
             VaultError::DailyLimitExceeded
         );
 
@@ -226,7 +229,14 @@ fn execute_sol_transfer(ctx: Context<ExecuteTap>, amount: u64) -> Result<()> {
     // As the owning program, we can directly debit/credit lamports.
     let registry_info = ctx.accounts.registry.to_account_info();
     let target_info = ctx.accounts.target_wallet.to_account_info();
-
+    // Guard: ensure registry stays rent-exempt after transfer
+    let rent = Rent::get()?;
+    let min_balance = rent.minimum_balance(registry_info.data_len());
+    let current_lamports = registry_info.lamports();
+    require!(
+        current_lamports.saturating_sub(amount) >= min_balance,
+        VaultError::InsufficientFunds
+    );
     **registry_info.try_borrow_mut_lamports()? -= amount;
     **target_info.try_borrow_mut_lamports()? += amount;
 
@@ -327,4 +337,5 @@ pub enum VaultError {
     #[msg("Invalid program")] InvalidProgram,
     #[msg("Invalid payload")] InvalidPayload,
     #[msg("Unauthorized")] Unauthorized,
+    #[msg("Insufficient funds (would drop below rent-exemption)")] InsufficientFunds,
 }

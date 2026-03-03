@@ -18,6 +18,7 @@ export const ANCHOR_ERRORS: Record<number, string> = {
   6007: "Invalid program in transaction.",
   6008: "Invalid payment payload.",
   6009: "Unauthorized. Only the vault owner can perform this action.",
+  6010: "Insufficient funds. The vault doesn't have enough SOL (rent-exempt minimum preserved).",
 };
 
 export const SOLSCAN_BASE = "https://solscan.io/tx";

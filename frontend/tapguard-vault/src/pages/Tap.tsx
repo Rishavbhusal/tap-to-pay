@@ -215,18 +215,24 @@ export default function TapPage() {
     });
 
     // ── Pre-flight: check daily limit before sending tx ──
-    const currentDay = new BN(Math.floor(Date.now() / 1000 / 86400));
-    let effectiveSpend = vault.dailySpend;
-    if (currentDay.gt(vault.lastDay)) {
-      effectiveSpend = new BN(0); // would reset on-chain
-    }
-    if (effectiveSpend.add(amountLamports).gt(vault.dailyLimit)) {
-      const limitSol = lamportsToSol(vault.dailyLimit.toNumber());
-      const spentSol = lamportsToSol(effectiveSpend.toNumber());
-      toast.error(`Daily limit exceeded. Spent: ${spentSol} SOL, Limit: ${limitSol} SOL. Increase limit in Settings.`);
-      setErrorMsg(`Daily limit exceeded (spent ${spentSol} / ${limitSol} SOL). Increase your daily limit in Settings.`);
-      setState("error");
-      return;
+    // When daily_limit is u64::MAX (set during init as "unlimited"), skip the check
+    // because BN.toNumber() can't handle values above Number.MAX_SAFE_INTEGER.
+    const MAX_U64 = new BN("18446744073709551615");
+    const isUnlimited = vault.dailyLimit.gte(MAX_U64);
+    if (!isUnlimited) {
+      const currentDay = new BN(Math.floor(Date.now() / 1000 / 86400));
+      let effectiveSpend = vault.dailySpend;
+      if (currentDay.gt(vault.lastDay)) {
+        effectiveSpend = new BN(0); // would reset on-chain
+      }
+      if (effectiveSpend.add(amountLamports).gt(vault.dailyLimit)) {
+        const limitSol = lamportsToSol(vault.dailyLimit.toNumber());
+        const spentSol = lamportsToSol(effectiveSpend.toNumber());
+        toast.error(`Daily limit exceeded. Spent: ${spentSol} SOL, Limit: ${limitSol} SOL. Increase limit in Settings.`);
+        setErrorMsg(`Daily limit exceeded (spent ${spentSol} / ${limitSol} SOL). Increase your daily limit in Settings.`);
+        setState("error");
+        return;
+      }
     }
 
     // Build the TapPayload
