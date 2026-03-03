@@ -138,6 +138,17 @@ export async function executeTap(
   // The precompile takes the raw message (payload_bytes), internally
   // hashes it with keccak256, then does ecrecover. This matches what
   // the HaLo NFC chip signed (keccak256 of payload_bytes).
+
+  // Safety: signature MUST be exactly 64 bytes (r: 32 + s: 32).
+  // The SDK uses signature.length for offset calculations; a mismatch
+  // causes the precompile to fail with InvalidInstructionDataSize (0x4).
+  if (signature.length !== 64) {
+    throw new Error(
+      `Secp256k1 signature must be exactly 64 bytes but got ${signature.length}. ` +
+      `Ensure r and s are each padded to 32 bytes.`
+    );
+  }
+
   const secp256k1Ix = Secp256k1Program.createInstructionWithPublicKey({
     publicKey: Buffer.from(chipPubkey),
     message: Buffer.from(payloadBytes),

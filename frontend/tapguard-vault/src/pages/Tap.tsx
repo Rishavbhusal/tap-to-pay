@@ -17,7 +17,7 @@ import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { BN } from "@coral-xyz/anchor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { solToUsd, PROGRAM_ID, solToLamports, SOLSCAN_BASE } from "@/lib/constants";
+import { solToUsd, PROGRAM_ID, solToLamports, lamportsToSol, SOLSCAN_BASE, ANCHOR_ERRORS } from "@/lib/constants";
 import { useSolana } from "@/hooks/useSolana";
 import { useProgram } from "@/hooks/useProgram";
 import { executeTap, getVaultPDA } from "@/lib/program";
@@ -26,11 +26,31 @@ import {
   hashPayload,
   hexToBytes,
   bytesToHex,
+  padTo32,
   type TapPayloadFields,
 } from "@/lib/payload";
 import { toast } from "sonner";
 
 type TapState = "idle" | "waiting" | "verifying" | "success" | "error" | "nfc_done_mobile";
+
+/** Parse Anchor/program errors into a human-readable message */
+function parseAnchorError(err: any): string {
+  const raw = err?.message || String(err);
+  // Match "custom program error: 0xHEX" — Anchor errors are 6000 + index
+  const hexMatch = raw.match(/custom program error:\s*0x([0-9a-fA-F]+)/);
+  if (hexMatch) {
+    const code = parseInt(hexMatch[1], 16);
+    // Anchor custom errors start at 6000
+    if (code >= 6000 && ANCHOR_ERRORS[code]) {
+      return ANCHOR_ERRORS[code];
+    }
+    // Sometimes the code is just the offset (0-based), map to 6000+
+    if (code < 100 && ANCHOR_ERRORS[6000 + code]) {
+      return ANCHOR_ERRORS[6000 + code];
+    }
+  }
+  return raw;
+}
 
 /** Detect mobile device */
 function isMobileDevice(): boolean {
@@ -102,6 +122,15 @@ export default function TapPage() {
       const chipPubkey = vault.chipPubkey;
       const [derivedPDA] = getVaultPDA(publicKey, chipPubkey);
 
+      // Debug: log vault state for deep-link flow
+      console.log("[submitNfcTx] Vault state:", {
+        dailyLimit: vault.dailyLimit.toString(),
+        dailySpend: vault.dailySpend.toString(),
+        nonce: vault.nonce.toString(),
+        frozen: vault.frozen,
+      });
+      console.log("[submitNfcTx] sigBytes length:", sigBytes.length, "recoveryId:", nfcRecoveryId);
+
       const txSigResult = await executeTap(
         program,
         vaultPDA,
@@ -121,7 +150,7 @@ export default function TapPage() {
       refreshVault();
     } catch (err: any) {
       console.error("execute_tap failed:", err);
-      const msg = err?.message || "Transaction failed";
+      const msg = parseAnchorError(err);
       setErrorMsg(msg);
       setState("error");
       toast.error(msg);
@@ -170,6 +199,35 @@ export default function TapPage() {
     const amountLamports = new BN(solToLamports(amountFloat));
     const nonce = vault.nonce;
     const nowSec = new BN(Math.floor(Date.now() / 1000));
+
+    // ── Debug: log vault state vs payload values ──
+    console.log("[TapPage] Vault state:", {
+      dailyLimit: vault.dailyLimit.toString(),
+      dailySpend: vault.dailySpend.toString(),
+      nonce: vault.nonce.toString(),
+      frozen: vault.frozen,
+      lastDay: vault.lastDay.toString(),
+    });
+    console.log("[TapPage] Payload values:", {
+      amountLamports: amountLamports.toString(),
+      nonce: nonce.toString(),
+      timestamp: nowSec.toString(),
+    });
+
+    // ── Pre-flight: check daily limit before sending tx ──
+    const currentDay = new BN(Math.floor(Date.now() / 1000 / 86400));
+    let effectiveSpend = vault.dailySpend;
+    if (currentDay.gt(vault.lastDay)) {
+      effectiveSpend = new BN(0); // would reset on-chain
+    }
+    if (effectiveSpend.add(amountLamports).gt(vault.dailyLimit)) {
+      const limitSol = lamportsToSol(vault.dailyLimit.toNumber());
+      const spentSol = lamportsToSol(effectiveSpend.toNumber());
+      toast.error(`Daily limit exceeded. Spent: ${spentSol} SOL, Limit: ${limitSol} SOL. Increase limit in Settings.`);
+      setErrorMsg(`Daily limit exceeded (spent ${spentSol} / ${limitSol} SOL). Increase your daily limit in Settings.`);
+      setState("error");
+      return;
+    }
 
     // Build the TapPayload
     const payload: TapPayloadFields = {
@@ -222,9 +280,12 @@ export default function TapPage() {
       }
 
       const { r, s, v } = haloResult.signature.raw;
-      // Convert r,s hex to byte arrays, combine into [u8; 64]
-      const rBytes = hexToBytes(r);
-      const sBytes = hexToBytes(s);
+      // Convert r,s hex to byte arrays, pad each to exactly 32 bytes, combine into [u8; 64]
+      // The HaLo chip may return r/s with variable length; the Secp256k1 precompile
+      // requires exactly 64 bytes for the signature, and the SDK uses signature.length
+      // for internal offset calculations — a mismatch causes InvalidInstructionDataSize.
+      const rBytes = padTo32(hexToBytes(r));
+      const sBytes = padTo32(hexToBytes(s));
       const sigBytes: number[] = [...rBytes, ...sBytes];
       const recoveryId = v - 27; // HaLo returns 27/28, contract expects 0/1
 
@@ -266,7 +327,7 @@ export default function TapPage() {
       refreshVault();
     } catch (err: any) {
       console.error("execute_tap failed:", err);
-      const msg = err?.message || "Transaction failed";
+      const msg = parseAnchorError(err);
       setErrorMsg(msg);
       setState("error");
       toast.error(msg);

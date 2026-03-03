@@ -108,7 +108,7 @@ export function derToRaw(derHex: string): { r: Uint8Array; s: Uint8Array } {
   return { r, s };
 }
 
-function padTo32(arr: Uint8Array): Uint8Array {
+export function padTo32(arr: Uint8Array): Uint8Array {
   if (arr.length === 32) return arr;
   if (arr.length > 32) return arr.slice(arr.length - 32); // strip leading 0x00
   const out = new Uint8Array(32);

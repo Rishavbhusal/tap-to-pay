@@ -86,7 +86,9 @@ pub mod nfc_smart_vault {
         // Increment nonce
         registry.nonce = registry.nonce.checked_add(1)
             .ok_or(VaultError::NonceOverflow)?;
-        registry.daily_spend += payload.amount;
+        registry.daily_spend = registry.daily_spend
+            .checked_add(payload.amount)
+            .ok_or(VaultError::NonceOverflow)?;
 
         // Execute transfer
         match payload.action {
