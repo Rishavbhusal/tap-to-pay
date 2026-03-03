@@ -25,6 +25,11 @@ export interface VaultRegistry {
   lastDay: BN;
   frozen: boolean;
   bump: number;
+  // Passive-tap fields
+  relayAuthority: PublicKey;
+  tapTarget: PublicKey;
+  tapAmount: BN;
+  lastCounter: number;
 }
 
 // ── Get the Anchor Program instance ───────────────────────────────
@@ -110,6 +115,25 @@ export async function unfreezeVault(
 ): Promise<string> {
   return program.methods
     .unfreeze()
+    .accounts({
+      registry: registryPDA,
+      owner,
+    })
+    .rpc();
+}
+
+// ── Instruction: set_tap_config ───────────────────────────────────
+// Configures passive-tap settings: target wallet, amount, relay authority
+export async function setTapConfig(
+  program: Program<NfcSmartVault>,
+  registryPDA: PublicKey,
+  owner: PublicKey,
+  target: PublicKey,
+  amountLamports: BN,
+  relayAuthority: PublicKey
+): Promise<string> {
+  return program.methods
+    .setTapConfig(target, amountLamports, relayAuthority)
     .accounts({
       registry: registryPDA,
       owner,

@@ -23,6 +23,20 @@ export type NfcSmartVault = {
       args: [];
     },
     {
+      name: "executePassiveTap";
+      discriminator: [0, 0, 0, 0, 0, 0, 0, 0];
+      accounts: [
+        { name: "registry"; writable: true },
+        { name: "targetWallet"; writable: true },
+        { name: "relay"; signer: true },
+        {
+          name: "systemProgram";
+          address: "11111111111111111111111111111111";
+        }
+      ];
+      args: [{ name: "counter"; type: "u32" }];
+    },
+    {
       name: "executeTap";
       discriminator: [75, 138, 138, 92, 84, 247, 107, 89];
       accounts: [
@@ -76,6 +90,19 @@ export type NfcSmartVault = {
       args: [{ name: "newLimit"; type: "u64" }];
     },
     {
+      name: "setTapConfig";
+      discriminator: [0, 0, 0, 0, 0, 0, 0, 1];
+      accounts: [
+        { name: "registry"; writable: true },
+        { name: "owner"; signer: true }
+      ];
+      args: [
+        { name: "target"; type: "pubkey" },
+        { name: "amount"; type: "u64" },
+        { name: "relay"; type: "pubkey" }
+      ];
+    },
+    {
       name: "unfreeze";
       discriminator: [133, 160, 68, 253, 80, 232, 218, 247];
       accounts: [
@@ -124,7 +151,11 @@ export type NfcSmartVault = {
           { name: "dailySpend"; type: "u64" },
           { name: "lastDay"; type: "i64" },
           { name: "frozen"; type: "bool" },
-          { name: "bump"; type: "u8" }
+          { name: "bump"; type: "u8" },
+          { name: "relayAuthority"; type: "pubkey" },
+          { name: "tapTarget"; type: "pubkey" },
+          { name: "tapAmount"; type: "u64" },
+          { name: "lastCounter"; type: "u32" }
         ];
       };
     }
